@@ -1,4 +1,4 @@
-/*	$OpenBSD: ikeca.c,v 1.49 2019/05/08 23:59:19 tedu Exp $	*/
+/*	$OpenBSD: ikeca.c,v 1.52 2024/12/12 17:29:33 pascal Exp $	*/
 
 /*
  * Copyright (c) 2010 Jonathan Gray <jsg@openbsd.org>
@@ -1039,7 +1039,7 @@ ca_revoke(struct ca *ca, char *keyname)
 		err(1, "%s: snprintf", __func__);
 	char *cmd[] = { PATH_OPENSSL, "ca", "-config", ca->sslcnf,
 	    "-keyfile", cakey, "-passin", ca->passfile, "-gencrl",
-	    "-cert", cacrt, "-crldays", "365", "-out", path, ca->batch, NULL };
+	    "-cert", cacrt, "-out", path, ca->batch, NULL };
 	ca_execv(cmd);
 
 	return (0);
