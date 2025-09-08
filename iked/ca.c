@@ -1,4 +1,4 @@
-/*	$OpenBSD: ca.c,v 1.104 2025/09/04 10:55:19 yasuoka Exp $	*/
+/*	$OpenBSD: ca.c,v 1.105 2025/09/08 10:18:23 jsg Exp $	*/
 
 /*
  * Copyright (c) 2020-2021 Tobias Heider <tobhe@openbsd.org>
@@ -1897,7 +1897,7 @@ ca_validate_cert(struct iked *env, struct iked_static_id *id,
 	const char		*errstr = "failed";
 	X509_NAME		*subj;
 	char			*subj_name;
-	int			 depth;
+	int			 depth = -1;
 
 	if (issuerp)
 		*issuerp = NULL;
