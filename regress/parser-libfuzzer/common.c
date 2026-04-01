@@ -234,8 +234,7 @@ ikev2_ike_sa_setreason(struct iked_sa *sa, char *r)
 }
 
 void
-ikev2_msg_dispose(struct iked *env, struct iked_msgqueue *queue,
-    struct iked_msg_retransmit *mr)
+ikev2_msg_flushqueue(struct iked *env, struct iked_msgqueue *queue)
 {
 }
 
