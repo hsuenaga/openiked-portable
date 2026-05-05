@@ -1,4 +1,4 @@
-/*	$OpenBSD: ikev2.c,v 1.397 2026/04/01 19:04:22 tobhe Exp $	*/
+/*	$OpenBSD: ikev2.c,v 1.398 2026/05/05 09:23:06 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2019 Tobias Heider <tobias.heider@stusta.de>
@@ -7042,7 +7042,9 @@ ikev2_print_id(struct iked_id *id, char *idstr, size_t idstrlen)
 #ifdef HAVE_SOCKADDR_SA_LEN
 		s4.sin_len = sizeof(s4);
 #endif
-		memcpy(&s4.sin_addr.s_addr, ptr, len);
+		if (len != (ssize_t)sizeof(s4.sin_addr.s_addr))
+			return (-1);
+		memcpy(&s4.sin_addr.s_addr, ptr, sizeof(s4.sin_addr.s_addr));
 
 		if (strlcat(idstr, print_addr(&s4), idstrlen) >= idstrlen)
 			return (-1);
@@ -7063,7 +7065,9 @@ ikev2_print_id(struct iked_id *id, char *idstr, size_t idstrlen)
 #ifdef HAVE_SOCKADDR_SA_LEN
 		s6.sin6_len = sizeof(s6);
 #endif
-		memcpy(&s6.sin6_addr, ptr, len);
+		if (len != (ssize_t)sizeof(s6.sin6_addr))
+			return (-1);
+		memcpy(&s6.sin6_addr, ptr, sizeof(s6.sin6_addr));
 
 		if (strlcat(idstr, print_addr(&s6), idstrlen) >= idstrlen)
 			return (-1);
