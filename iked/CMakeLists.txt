@@ -45,6 +45,7 @@ list(APPEND CFLAGS
 set(INC_DIRS
 	${CMAKE_CURRENT_SOURCE_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/../iked
+	$ENV{DEST_INC}
 )
 
 add_library(iked-shared OBJECT
