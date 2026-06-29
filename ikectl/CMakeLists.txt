@@ -45,7 +45,11 @@ list(APPEND CFLAGS
 
 target_compile_options(ikectl PRIVATE ${CFLAGS})
 if(HAVE_LD_Z)
+if (CMAKE_SYSTEM_NAME MATCHES "iOS")
+	target_link_options(iked PRIVATE "LINKER:-pie")
+else()
 	target_link_options(ikectl PRIVATE "LINKER:-z,relro,-z,now")
+endif()
 endif()
 
 target_include_directories(ikectl
