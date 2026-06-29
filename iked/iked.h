@@ -33,6 +33,15 @@
 
 #define MAXIMUM(a,b) (((a)>(b))?(a):(b))
 #define MINIMUM(a,b) (((a)<(b))?(a):(b))
+#ifdef roundup
+/*
+ * iOS SDK has its own roundup macro 
+ *
+ * #define roundup(x, y)   ((((x) % (y)) == 0) ? \
+ *                         (x) : ((x) + ((y) - ((x) % (y)))))
+ */
+#undef roundup
+#endif
 #define roundup(x, y)   ((((x)+((y)-1))/(y))*(y))
 
 #ifndef IKED_H
