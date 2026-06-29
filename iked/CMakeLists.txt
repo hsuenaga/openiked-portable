@@ -105,7 +105,12 @@ list(APPEND SRCS
 	${CMAKE_CURRENT_BINARY_DIR}/parse.c
 )
 
+if(CMAKE_SYSTEM_NAME MATCHES "iOS")
+list(REMOVE_ITEM SRCS iked.c)
+add_library(iked STATIC ${SRCS})
+else()
 add_executable(iked ${SRCS})
+endif()
 
 target_compile_options(iked PRIVATE ${CFLAGS})
 target_compile_options(iked-shared PRIVATE ${CFLAGS})
