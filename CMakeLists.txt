@@ -99,7 +99,11 @@ if (NOT DEFINED CMAKE_INSTALL_SBINDIR)
 	set (CMAKE_INSTALL_SBINDIR ${CMAKE_INSTALL_PREFIX}/sbin)
 endif()
 
+if (CMAKE_SYSTEM_NAME MATCHES "iOS")
+check_linker_flag(C "LINKER:-pie" HAVE_LD_Z)
+else()
 check_linker_flag(C "LINKER:-z,now,-z,relro" HAVE_LD_Z)
+endif()
 
 check_include_files("sys/types.h;net/pfkeyv2.h" HAVE_NET_PFKEY_H)
 if(HAVE_NET_PFKEY_H)
