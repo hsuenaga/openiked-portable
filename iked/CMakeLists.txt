@@ -23,7 +23,9 @@ list(APPEND VERSIONED_FILES iked.c)
 set(SRCS)
 set(LIBS)
 
+if(NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
 set(CFLAGS)
+endif()
 list(APPEND CFLAGS
 	-O2
 	-fstack-protector-strong
