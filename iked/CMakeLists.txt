@@ -47,6 +47,12 @@ set(INC_DIRS
 	${CMAKE_CURRENT_SOURCE_DIR}/../iked
 )
 
+if(DEFINED ENV{DESTDIR})
+list(APPEND INC_DIRS
+	$ENV{DESTDIR}/usr/include
+)
+endif()
+
 add_library(iked-shared OBJECT
 	ikev2_pld.c
 	imsg_util.c
@@ -114,10 +120,8 @@ endif()
 
 target_compile_options(iked PRIVATE ${CFLAGS})
 target_compile_options(iked-shared PRIVATE ${CFLAGS})
+if (NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
 if(HAVE_LD_Z)
-if (CMAKE_SYSTEM_NAME MATCHES "iOS")
-	target_link_options(iked PRIVATE "LINKER:-pie")
-else()
 	target_link_options(iked PRIVATE "LINKER:-z,relro,-z,now")
 endif()
 endif()
