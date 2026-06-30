@@ -23,11 +23,8 @@ list(APPEND VERSIONED_FILES iked.c)
 set(SRCS)
 set(LIBS)
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
 set(CFLAGS)
-endif()
 list(APPEND CFLAGS
-	-O2
 	-fstack-protector-strong
 	-fPIE
 	-D_FORTIFY_SOURCE=2
@@ -41,8 +38,13 @@ list(APPEND CFLAGS
 	-Wpointer-arith
 	-Wcast-qual
 	-Wsign-compare
+)
+if(NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
+list(APPEND CFLAGS
+	-O2
 	"$<$<CONFIG:DEBUG>:-O0;-g>"
 )
+endif()
 
 set(INC_DIRS
 	${CMAKE_CURRENT_SOURCE_DIR}
