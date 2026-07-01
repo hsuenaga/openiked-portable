@@ -62,7 +62,7 @@ int	 parent_dispatch_ikev2(int, struct privsep_proc *, struct imsg *);
 void	 parent_connected(struct privsep *);
 int	 parent_configure(struct iked *);
 
-struct iked_bridge *iked_bridge;
+struct ios_bridge *ios_bridge;
 struct iked	*iked_env;
 
 static struct privsep_proc procs[] = {
@@ -72,57 +72,10 @@ static struct privsep_proc procs[] = {
 };
 
 /* called from swift */
-static bool
-iked_puts(const char *string)
-{
-	if (iked_bridge == NULL)
-		return false;
-	if (iked_bridge->iked_puts == NULL)
-		return false;
-
-	return iked_bridge->iked_puts(string);
-}
-
-static int
-iked_vprintf(const char *fmt, va_list ap)
-{
-	if (iked_bridge == NULL)
-		return false;
-	if (iked_bridge->iked_vprintf == NULL)
-		return false;
-
-	return iked_bridge->iked_vprintf(fmt, ap);
-}
-
-static int
-iked_printf(const char *fmt, ...)
-{
-	va_list ap;
-	int ret;
-
-	va_start(ap, fmt);
-	ret = iked_vprintf(fmt, ap);
-	va_end(ap);
-
-	return ret;
-}
-
-static void
-iked_error(int num, const char *message)
-{
-	if (iked_bridge == NULL)
-		return;
-	if (iked_bridge->iked_error == NULL)
-		return;
-
-	(void) iked_bridge->iked_error(num, message);
-	return;
-}
-
 bool
 initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 {
-	struct iked_bridge *bridge;
+	struct ios_bridge *bridge;
 	struct iked *env;
 
 	if ((bridge = calloc(1, sizeof(*bridge))) == NULL) {
@@ -130,20 +83,20 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 			hnd_err(1, "calloc: bridge");
 		return false;
 	}
-	iked_bridge = bridge;
-	bridge->iked_puts = hnd_puts;
-	bridge->iked_vprintf = hnd_vp;
-	bridge->iked_error = hnd_err;
+	ios_bridge = bridge;
+	bridge->ios_puts = hnd_puts;
+	bridge->ios_vprintf = hnd_vp;
+	bridge->ios_error = hnd_err;
 
 	if ((env = calloc(1, sizeof(*env))) == NULL) {
-		iked_error(1, "calloc: ctx");
+		ios_error(1, "calloc: ctx");
 		free(bridge);
-		iked_bridge = bridge = NULL;
+		ios_bridge = bridge = NULL;
 		return false;
 	}
 	bridge->iked_env = env;
 
-	iked_puts("iked initialization complete.");
+	ios_puts("iked initialization complete.");
 	return true;
 }
 
