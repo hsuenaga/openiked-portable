@@ -117,6 +117,7 @@ list(APPEND SRCS
 
 if(CMAKE_SYSTEM_NAME MATCHES "iOS")
 list(REMOVE_ITEM SRCS iked.c)
+list(APPEND SRCS ios_bridge.c)
 add_library(iked STATIC ${SRCS})
 else()
 add_executable(iked ${SRCS})
