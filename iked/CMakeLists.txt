@@ -121,13 +121,13 @@ list(APPEND SRCS
 	${CMAKE_CURRENT_BINARY_DIR}/parse.c
 )
 
-if(USE_THREAD)
+if(BUILD_LIBRARY)
 	list(REMOVE_ITEM SRCS iked.c)
 	add_library(iked STATIC ${SRCS})
-	if(CMAKE_SYSTEM_NAME MATCHES "iOS")
-		list(APPEND SRCS ios_bridge.c)
+	if(APPLE)
+		list(APPEND SRCS swift_bridge.c)
 		set_target_properties(iked
-			PROPERTIES PUBLIC_HEADER "ios_bridge.h")
+			PROPERTIES PUBLIC_HEADER "swift_bridge.h")
 	endif()
 else()
 add_executable(iked ${SRCS})

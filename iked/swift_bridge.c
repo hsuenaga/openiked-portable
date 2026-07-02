@@ -41,7 +41,7 @@
 #include "iked.h"
 #include "ikev2.h"
 #include "version.h"
-#include "ios_bridge.h"
+#include "swift_bridge.h"
 
 #ifdef WITH_APPARMOR
 #include "apparmor.h"
@@ -62,7 +62,7 @@ int	 parent_dispatch_ikev2(int, struct privsep_proc *, struct imsg *);
 void	 parent_connected(struct privsep *);
 int	 parent_configure(struct iked *);
 
-struct ios_bridge *ios_bridge;
+struct swift_bridge *swift_bridge;
 struct iked	*iked_env;
 
 static struct privsep_proc procs[] = {
@@ -75,7 +75,7 @@ static struct privsep_proc procs[] = {
 bool
 initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 {
-	struct ios_bridge *bridge;
+	struct swift_bridge *bridge;
 	struct iked *env;
 
 	if ((bridge = calloc(1, sizeof(*bridge))) == NULL) {
@@ -83,20 +83,20 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 			hnd_err(1, "calloc: bridge");
 		return false;
 	}
-	ios_bridge = bridge;
-	bridge->ios_puts = hnd_puts;
-	bridge->ios_vprintf = hnd_vp;
-	bridge->ios_error = hnd_err;
+	swift_bridge = bridge;
+	bridge->swift_puts = hnd_puts;
+	bridge->swift_vprintf = hnd_vp;
+	bridge->swift_error = hnd_err;
 
 	if ((env = calloc(1, sizeof(*env))) == NULL) {
-		ios_error(1, "calloc: ctx");
+		swift_error(1, "calloc: ctx");
 		free(bridge);
-		ios_bridge = bridge = NULL;
+		swift_bridge = bridge = NULL;
 		return false;
 	}
 	bridge->iked_env = env;
 
-	ios_puts("iked initialization complete.");
+	swift_puts("iked initialization complete.");
 	return true;
 }
 
@@ -111,7 +111,7 @@ usage(void)
 }
 
 int
-ios_main(int argc, char *argv[])
+swift_main(int argc, char *argv[])
 {
 	int			 c;
 	int			 debug = 0, verbose = 0;
