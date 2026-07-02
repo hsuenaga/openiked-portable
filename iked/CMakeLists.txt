@@ -39,7 +39,8 @@ list(APPEND CFLAGS
 	-Wcast-qual
 	-Wsign-compare
 )
-if(NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
+if(NOT CMAKE_GENERATOR MATCHES "Xcode")
+# Optimization flags are selected during build/install phase.
 list(APPEND CFLAGS
 	-O2
 	"$<$<CONFIG:DEBUG>:-O0;-g>"
@@ -50,11 +51,16 @@ set(INC_DIRS
 	${CMAKE_CURRENT_SOURCE_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/../iked
 )
+set(LIB_DIRS)
 
 if(DEFINED ENV{DESTDIR})
-list(APPEND INC_DIRS
-	$ENV{DESTDIR}/usr/include
-)
+	list(APPEND INC_DIRS
+		$ENV{DESTDIR}/usr/include
+	)
+	list(APPEND LIB_DIRS
+		$ENV{DESTDIR}/usr/lib
+		$ENV{DESTDIR}/lib
+	)
 endif()
 
 add_library(iked-shared OBJECT
@@ -115,25 +121,28 @@ list(APPEND SRCS
 	${CMAKE_CURRENT_BINARY_DIR}/parse.c
 )
 
-if(CMAKE_SYSTEM_NAME MATCHES "iOS")
-list(REMOVE_ITEM SRCS iked.c)
-list(APPEND SRCS ios_bridge.c)
-add_library(iked STATIC ${SRCS})
-set_target_properties(iked PROPERTIES PUBLIC_HEADER "ios_bridge.h")
+if(USE_THREAD)
+	list(REMOVE_ITEM SRCS iked.c)
+	add_library(iked STATIC ${SRCS})
+	if(CMAKE_SYSTEM_NAME MATCHES "iOS")
+		list(APPEND SRCS ios_bridge.c)
+		set_target_properties(iked
+			PROPERTIES PUBLIC_HEADER "ios_bridge.h")
+	endif()
 else()
 add_executable(iked ${SRCS})
 endif()
 
 target_compile_options(iked PRIVATE ${CFLAGS})
 target_compile_options(iked-shared PRIVATE ${CFLAGS})
-if (NOT CMAKE_SYSTEM_NAME MATCHES "iOS")
 if(HAVE_LD_Z)
 	target_link_options(iked PRIVATE "LINKER:-z,relro,-z,now")
-endif()
 endif()
 
 target_include_directories(iked PRIVATE ${INC_DIRS})
 target_include_directories(iked-shared PRIVATE ${INC_DIRS})
+
+target_link_directories(iked PRIVATE ${LIB_DIRS})
 
 if(DEFINED ENV{CLUSTERFUZZLITE})
 	target_link_libraries(iked-shared

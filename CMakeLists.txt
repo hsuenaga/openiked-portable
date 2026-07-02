@@ -105,7 +105,9 @@ if (NOT DEFINED CMAKE_INSTALL_SBINDIR)
 	set (CMAKE_INSTALL_SBINDIR ${CMAKE_INSTALL_PREFIX}/sbin)
 endif()
 
+if (NOT APPLE OR NOT CMAKE_GENERATOR MATCHES "Xcode")
 check_linker_flag(C "LINKER:-z,now,-z,relro" HAVE_LD_Z)
+endif()
 
 check_include_files("sys/types.h;net/pfkeyv2.h" HAVE_NET_PFKEY_H)
 if(HAVE_NET_PFKEY_H)
