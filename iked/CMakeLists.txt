@@ -123,9 +123,13 @@ list(APPEND SRCS
 
 if(BUILD_LIBRARY)
 	list(REMOVE_ITEM SRCS iked.c)
-	add_library(iked STATIC ${SRCS})
 	if(APPLE)
 		list(APPEND SRCS swift_bridge.c)
+	endif()
+
+	add_library(iked STATIC ${SRCS})
+
+	if (APPLE)
 		set_target_properties(iked
 			PROPERTIES PUBLIC_HEADER "swift_bridge.h")
 	endif()
