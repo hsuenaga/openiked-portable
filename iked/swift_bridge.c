@@ -162,9 +162,9 @@ deinitIKE(void)
 }
 
 bool
-addSymbol(const char *definition)
+addSymbol(char *definition)
 {
-	if (bridge == NULL)
+	if (swift_bridge == NULL)
 		return false;
 	if (cmdline_symset(definition) < 0)
 		return false;
@@ -176,42 +176,39 @@ bool
 startIKE(int argc, char *argv[])
 {
 	int			 c;
-	int			 debug = bridge->debug;
-	int			 verbose = bridge->verbose;
-	int			 opts = bridge->opts;
+	int			 debug = swift_bridge->debug;
+	int			 verbose = swift_bridge->verbose;
+	int			 opts = swift_bridge->opts;
 	enum natt_mode		 natt_mode = NATT_FORCE;
-	in_port_t		 port = swift_brdige->port;
+	in_port_t		 port = swift_bridge->port;
 	const char		*conffile = swift_bridge->configurationFile;
 	const char		*sock = swift_bridge->controlSocket;;
 	const char		*errstr, *title = NULL;
-	struct iked		*env = NULL;
 	struct privsep		*ps;
 	enum privsep_procid	 proc_id = PROC_PARENT;
-	int			 proc_instance = bridge->procInstance;
+	int			 proc_instance = swift_bridge->procInstance;
 
 	/* log to stderr until daemonized */
 	log_init(debug ? debug : 1, LOG_DAEMON);
 
-	if (bridge == NULL)
+	if (swift_bridge == NULL)
 		return false;
-	if (bridge->env == NULL)
+	if (iked_env == NULL)
 		return false;
 
-	env = bridge->env;
+	iked_env->sc_opts = opts;
+	iked_env->sc_nattmode = natt_mode;
+	iked_env->sc_nattport = port;
 
-	env->sc_opts = opts;
-	env->sc_nattmode = natt_mode;
-	env->sc_nattport = port;
+	ps = &iked_env->sc_ps;
+	ps->ps_env = iked_env;
 
-	ps = &env->sc_ps;
-	ps->ps_env = env;
-
-	if (strlcpy(env->sc_conffile, conffile, PATH_MAX) >= PATH_MAX)
+	if (strlcpy(iked_env->sc_conffile, conffile, PATH_MAX) >= PATH_MAX)
 		errx(1, "config file exceeds PATH_MAX");
 
 	ca_sslinit();
 	group_init();
-	policy_init(env);
+	policy_init(iked_env);
 
 	if ((ps->ps_pw =  getpwnam(IKED_USER)) == NULL)
 		errx(1, "unknown user %s", IKED_USER);
@@ -230,7 +227,7 @@ startIKE(int argc, char *argv[])
 		ps->ps_title[proc_id] = title;
 
 	/* only the parent returns */
-	proc_init(ps, procs, nitems(procs), debug, argc0, argv, proc_id);
+	proc_init(ps, procs, nitems(procs), debug, argc, argv, proc_id);
 
 	setproctitle("parent");
 	log_procinit("parent");
@@ -252,7 +249,7 @@ startIKE(int argc, char *argv[])
 	signal_add(&ps->ps_evsigusr1, NULL);
 
 #if defined(HAVE_VROUTE)
-	vroute_init(env);
+	vroute_init(iked_env);
 #endif
 
 	proc_connect(ps, parent_connected);
@@ -260,7 +257,7 @@ startIKE(int argc, char *argv[])
 	event_dispatch();
 
 	log_debug("%d parent exiting", getpid());
-	parent_shutdown(env);
+	parent_shutdown(iked_env);
 
 	return (0);
 }
@@ -524,7 +521,7 @@ parent_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 int
 parent_dispatch_ikev2(int fd, struct privsep_proc *p, struct imsg *imsg)
 {
-//	struct iked	*env = iked_env;
+	struct iked	*env = iked_env;
 
 	switch (imsg->hdr.type) {
 #if defined(HAVE_VROUTE)

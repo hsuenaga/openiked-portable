@@ -34,6 +34,6 @@ bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err);
 void deinitIKE(void);
 bool startIKE(int, char *[]);
 
-bool addSymbol(const char *);
+bool addSymbol(char *);
 
 #endif /* __SWIFT_BRIDGE_H__ */
