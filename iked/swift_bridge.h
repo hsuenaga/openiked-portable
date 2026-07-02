@@ -1,5 +1,6 @@
 #ifndef __SWIFT_BRIDGE_H__
 #define __SWIFT_BRIDGE_H__
+#include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
 
