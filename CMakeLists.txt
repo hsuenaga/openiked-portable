@@ -429,7 +429,7 @@ if(CLUSTERFUZZ)
 endif()
 add_subdirectory(compat)
 add_subdirectory(iked)
-if (USE_THREAD)
+if (NOT USE_THREAD)
 # Not supported by thread-based openiked.
 add_subdirectory(ikectl)
 add_subdirectory(regress/dh)
