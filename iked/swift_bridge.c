@@ -47,6 +47,9 @@
 #include "apparmor.h"
 #endif
 
+struct swift_bridge *swift_bridge;
+struct iked	*iked_env;
+
 static inline bool
 swift_puts(const char *string)
 {
@@ -90,17 +93,9 @@ swift_error(int num, const char *message)
 	if (swift_bridge->swift_error == NULL)
 		return;
 
-	(void) swift_bridge->swift_error(num, message);
+	swift_bridge->swift_error(num, message);
 	return;
 }
-
-
-__dead void usage(void);
-
-/* Saves a copy of argv for setproctitle emulation */
-#ifndef HAVE_SETPROCTITLE
-static char **saved_av;
-#endif
 
 void	 parent_shutdown(struct iked *);
 void	 parent_sig_handler(int, short, void *);
@@ -109,9 +104,6 @@ int	 parent_dispatch_control(int, struct privsep_proc *, struct imsg *);
 int	 parent_dispatch_ikev2(int, struct privsep_proc *, struct imsg *);
 void	 parent_connected(struct privsep *);
 int	 parent_configure(struct iked *);
-
-struct swift_bridge *swift_bridge;
-struct iked	*iked_env;
 
 static struct privsep_proc procs[] = {
 	{ "ca",		PROC_CERT,	parent_dispatch_ca, caproc, IKED_CA },
@@ -142,142 +134,74 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 		swift_bridge = bridge = NULL;
 		return false;
 	}
-	bridge->iked_env = env;
+	/* only 1 instance */
+	iked_env = env;
+
+	bridge->port = IKED_NATT_PORT;
+	bridge->configurationFile = IKED_CONFIG;
+	bridge->controlSocket = IKED_SOCKET;
+	bridge->debug = 0;
+	bridge->verbose = 0;
+	bridge->procInstance = 0;
+	bridge->opts = 0;
 
 	swift_puts("iked initialization complete.");
 	return true;
 }
 
-__dead void
-usage(void)
+void
+deinitIKE(void)
 {
-	extern char	*__progname;
+	if (swift_bridge == NULL)
+		return;
 
-	fprintf(stderr, "usage: %s [-dnSTtVv] [-D macro=value] "
-	    "[-f file] [-p udpencap_port] [-s socket]\n", __progname);
-	exit(1);
+	/* release swift closures. */
+	swift_bridge->swift_puts = NULL;
+	swift_bridge->swift_vprintf = NULL;
+	swift_bridge->swift_error = NULL;
 }
 
-int
-swift_main(int argc, char *argv[])
+bool
+addSymbol(const char *definition)
+{
+	if (bridge == NULL)
+		return false;
+	if (cmdline_symset(definition) < 0)
+		return false;
+
+	return true;
+}
+
+bool
+startIKE(int argc, char *argv[])
 {
 	int			 c;
-	int			 debug = 0, verbose = 0;
-	int			 opts = 0;
-	enum natt_mode		 natt_mode = NATT_DEFAULT;
-	in_port_t		 port = IKED_NATT_PORT;
-	const char		*conffile = IKED_CONFIG;
-	const char		*sock = IKED_SOCKET;
+	int			 debug = bridge->debug;
+	int			 verbose = bridge->verbose;
+	int			 opts = bridge->opts;
+	enum natt_mode		 natt_mode = NATT_FORCE;
+	in_port_t		 port = swift_brdige->port;
+	const char		*conffile = swift_bridge->configurationFile;
+	const char		*sock = swift_bridge->controlSocket;;
 	const char		*errstr, *title = NULL;
 	struct iked		*env = NULL;
 	struct privsep		*ps;
 	enum privsep_procid	 proc_id = PROC_PARENT;
-	int			 proc_instance = 0;
-	int			 argc0 = argc;
-
-	log_init(1, LOG_DAEMON);
-
-#ifndef HAVE_SETPROCTITLE
-	int		 i;
-	saved_av = calloc(argc + 1, sizeof(*saved_av));
-	if (saved_av == NULL)
-		errx(1, "calloc");
-	for (i = 0; i < argc; i++) {
-		saved_av[i] = strdup(argv[i]);
-		if (saved_av[i] == NULL)
-			errx(1, "strdup");
-	}
-	saved_av[i] = NULL;
-	compat_init_setproctitle(argc, argv);
-	argv = saved_av;
-#endif
-
-	while ((c = getopt(argc, argv, "6D:df:I:nP:p:Ss:TtvV")) != -1) {
-		switch (c) {
-		case '6':
-			log_warnx("the -6 option is ignored and will be "
-			    "removed in the future.");
-			break;
-		case 'D':
-			if (cmdline_symset(optarg) < 0)
-				log_warnx("could not parse macro definition %s",
-				    optarg);
-			break;
-		case 'd':
-			debug++;
-			break;
-		case 'f':
-			conffile = optarg;
-			break;
-		case 'I':
-			proc_instance = strtonum(optarg, 0,
-			    PROC_MAX_INSTANCES, &errstr);
-			if (errstr)
-				fatalx("invalid process instance");
-			break;
-		case 'n':
-			debug = 1;
-			opts |= IKED_OPT_NOACTION;
-			break;
-		case 'P':
-			title = optarg;
-			proc_id = proc_getid(procs, nitems(procs), title);
-			if (proc_id == PROC_MAX)
-				fatalx("invalid process name");
-			break;
-		case 'p':
-			if (natt_mode == NATT_DISABLE)
-				errx(1, "-T and -p are mutually exclusive");
-			port = strtonum(optarg, 1, UINT16_MAX, &errstr);
-			if (errstr != NULL)
-				errx(1, "port is %s: %s", errstr, optarg);
-			natt_mode = NATT_FORCE;
-			break;
-		case 'S':
-			opts |= IKED_OPT_PASSIVE;
-			break;
-		case 's':
-			sock = optarg;
-			break;
-		case 'T':
-			if (natt_mode == NATT_FORCE)
-				errx(1, "-T and -t/-p are mutually exclusive");
-			natt_mode = NATT_DISABLE;
-			break;
-		case 't':
-			if (natt_mode == NATT_DISABLE)
-				errx(1, "-T and -t are mutually exclusive");
-			natt_mode = NATT_FORCE;
-			break;
-		case 'v':
-			verbose++;
-			opts |= IKED_OPT_VERBOSE;
-			break;
-		case 'V':
-			fprintf(stderr, "OpenIKED %s\n", IKED_VERSION);
-			return 0;
-		default:
-			usage();
-		}
-	}
+	int			 proc_instance = bridge->procInstance;
 
 	/* log to stderr until daemonized */
 	log_init(debug ? debug : 1, LOG_DAEMON);
 
-	argc -= optind;
-	if (argc > 0)
-		usage();
+	if (bridge == NULL)
+		return false;
+	if (bridge->env == NULL)
+		return false;
 
-	if ((env = calloc(1, sizeof(*env))) == NULL)
-		fatal("calloc: env");
+	env = bridge->env;
 
-	iked_env = env;
 	env->sc_opts = opts;
 	env->sc_nattmode = natt_mode;
 	env->sc_nattport = port;
-#ifdef WITH_APPARMOR
-	env->sc_apparmor = armor_proc_open();
-#endif
 
 	ps = &env->sc_ps;
 	ps->ps_env = env;
@@ -300,11 +224,6 @@ swift_main(int argc, char *argv[])
 
 	if (opts & IKED_OPT_NOACTION)
 		ps->ps_noaction = 1;
-	else {
-		/* check for root privileges */
-		if (geteuid())
-			errx(1, "need root privileges");
-	}
 
 	ps->ps_instance = proc_instance;
 	if (title != NULL)
