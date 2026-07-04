@@ -4,8 +4,22 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
+/*
+ * closure:
+ * { (_ string: UnsafePointer<CChar>?) -> CBool in ... }
+ */
 typedef bool (^putsHandler)(const char * string);
+
+/*
+ * closure:
+ * { (_ fmt: UnsafePointer<CChar>?, _ va: VaListPointer?) -> CInt in ... }
+ */
 typedef int (^vprintfHandler)(const char * fmt, va_list ap);
+
+/*
+ * closure:
+ * { (_ num: CInt,  UnsafePointer<CChar>?) -> Void in ... }
+ */
 typedef void (^errorHandler)(int num, const char * string);
 
 struct swift_bridge {
