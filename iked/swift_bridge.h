@@ -12,7 +12,7 @@ typedef bool (^putsHandler)(const char * string);
 
 /*
  * closure:
- * { (_ fmt: UnsafePointer<CChar>?, _ va: VaListPointer?) -> CInt in ... }
+ * { (_ fmt: UnsafePointer<CChar>?, _ va: CVaListPointer?) -> CInt in ... }
  */
 typedef int (^vprintfHandler)(const char * fmt, va_list ap);
 
