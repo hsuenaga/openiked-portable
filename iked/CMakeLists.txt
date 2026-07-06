@@ -123,18 +123,9 @@ list(APPEND SRCS
 
 if(BUILD_LIBRARY)
 	list(REMOVE_ITEM SRCS iked.c)
-	if(APPLE)
-		list(APPEND SRCS swift_bridge.c)
-	endif()
-
 	add_library(iked STATIC ${SRCS})
-
-	if (APPLE)
-		set_target_properties(iked
-			PROPERTIES PUBLIC_HEADER "swift_bridge.h")
-	endif()
 else()
-add_executable(iked ${SRCS})
+	add_executable(iked ${SRCS})
 endif()
 
 target_compile_options(iked PRIVATE ${CFLAGS})
@@ -154,7 +145,7 @@ if(DEFINED ENV{CLUSTERFUZZLITE})
 	)
 else()
 	target_link_libraries(iked-shared
-		PRIVATE util event crypto ssl compat
+		PUBLIC util event crypto ssl compat
 	)
 endif()
 
@@ -172,7 +163,7 @@ if (WITH_SYSTEMD)
 endif()
 
 target_link_libraries(iked
-	PRIVATE ${LIBS}
+	PUBLIC ${LIBS}
 )
 
 add_custom_command(
