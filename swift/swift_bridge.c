@@ -37,6 +37,7 @@
 #include <err.h>
 #include <pwd.h>
 #include <event.h>
+#include <pthread.h>
 
 #include "iked.h"
 #include "ikev2.h"
@@ -172,8 +173,9 @@ addSymbol(char *definition)
 	return true;
 }
 
+
 bool
-startIKE(int argc, char *argv[])
+startIKE(void)
 {
 	int			 c;
 	int			 debug = swift_bridge->debug;
@@ -227,7 +229,7 @@ startIKE(int argc, char *argv[])
 		ps->ps_title[proc_id] = title;
 
 	/* only the parent returns */
-	proc_init(ps, procs, nitems(procs), debug, argc, argv, proc_id);
+	proc_init(ps, procs, nitems(procs), debug, 0, NULL, proc_id);
 
 	setproctitle("parent");
 	log_procinit("parent");

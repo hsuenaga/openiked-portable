@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <pthread.h>
 
 /*
  * closure:
@@ -23,6 +24,8 @@ typedef int (^vprintfHandler)(const char * fmt, va_list ap);
 typedef void (^errorHandler)(int num, const char * string);
 
 struct swift_bridge {
+	pthread_mutex_t lock;
+
 	putsHandler swift_puts;
 	vprintfHandler swift_vprintf;
 	errorHandler swift_error;
@@ -46,7 +49,7 @@ int swift_main(int argc, char *argv[]);
 /* Swift API */
 bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err);
 void deinitIKE(void);
-bool startIKE(int, char *[]);
+bool startIKE(void);
 
 bool addSymbol(char *);
 

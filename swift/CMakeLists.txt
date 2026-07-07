@@ -1,30 +1,13 @@
-#set (INC_DIRS
-#	${CMAKE_CURRENT_SOURCE_DIR}
-#	${CMAKE_CURRENT_SOURCE_DIR}/../iked
-#)
-#if (DEFINED ENV{DESTDIR})
-#	list(APPEND INC_DIRS
-#		$ENV{DESTDIR}/usr/include
-#	)
-#endif()
-
-#set (LIB_DIRS
-#	${CMAKE_CURRENT_SOURCE_DIR}
-#	${CMAKE_CURRENT_SOURCE_DIR}/../iked
-#)
-#if (DEFINED ENV{DESTDIR})
-#	list(APPEND INC_DIRS
-#		$ENV{DESTDIR}/usr/lib
-#	)
-#endif()
-
 set(SRCS)
 set(LIBS)
 set(CFLAGS)
 set(INC_DIRS)
 set(LIB_DIRS)
 
-add_library(swiftike STATIC swift_bridge.c)
+add_library(swiftike STATIC
+	proc.c
+	swift_bridge.c
+)
 
 target_include_directories(swiftike PUBLIC
 	../iked

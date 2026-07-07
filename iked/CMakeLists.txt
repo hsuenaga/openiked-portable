@@ -123,6 +123,9 @@ list(APPEND SRCS
 
 if(BUILD_LIBRARY)
 	list(REMOVE_ITEM SRCS iked.c)
+	if(APPLE)
+		list(REMOVE_ITEM SRCS proc.c)
+	endif()
 	add_library(iked STATIC ${SRCS})
 else()
 	add_executable(iked ${SRCS})
