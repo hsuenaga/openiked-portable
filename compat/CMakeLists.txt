@@ -73,6 +73,12 @@ endif()
 if(NOT HAVE_VIS)
 	list(APPEND SRCS ${IKED_COMPAT}/vis.c)
 endif()
+if(NOT HAVE_TIMINGSAFE_BCMP)
+	list(APPEND SRCS ${IKED_COMPAT}/timingsafe_bcmp.c)
+endif()
+if(NOT HAVE_TIMINGSAFE_MEMCMP)
+	list(APPEND SRCS ${IKED_COMPAT}/timingsafe_memcmp.c)
+endif()
 
 set(CFLAGS)
 list(APPEND CFLAGS
