@@ -1,0 +1,23 @@
+{
+    "cSpell.words": [
+        "evsigchld",
+        "evsighup",
+        "evsigint",
+        "evsigpipe",
+        "evsigterm",
+        "evsigusr",
+        "fatalx",
+        "ievs",
+        "iked",
+        "ikev",
+        "imsgev",
+        "ocsp",
+        "privsep",
+        "setcoupled",
+        "setocsp",
+        "setverbose",
+        "SIOCAIFGMEMB",
+        "SIOCGIFGMEMB",
+        "wroute"
+    ]
+}
