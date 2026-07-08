@@ -43,8 +43,10 @@ struct swift_bridge {
 extern struct swift_bridge *swift_bridge;
 
 
-/* XXX: TO BE REMOVED */
-int swift_main(int argc, char *argv[]);
+/* Internal API. no need to call from Swift? */
+struct iked *retainEnv(void);
+void releaseEnv(void);
+struct iked *copyEnv(void);
 
 /* Swift API */
 bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err);

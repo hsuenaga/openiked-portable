@@ -23,6 +23,9 @@
 #include <arpa/inet.h>
 #include <limits.h>
 #include <imsg.h>
+#ifdef THREAD
+#include <pthread.h>
+#endif
 
 #include <openssl/evp.h>
 
@@ -895,7 +898,11 @@ struct ipsec_mode {
 /* iked.c */
 void	 parent_reload(struct iked *, int, const char *);
 
+#ifdef THREAD
+extern __thread struct iked	*iked_env;
+#else
 extern struct iked	*iked_env;
+#endif
 
 /* control.c */
 void	 control(struct privsep *, struct privsep_proc *);

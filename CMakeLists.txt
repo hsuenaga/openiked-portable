@@ -14,10 +14,10 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-if (NOT APPLE)
-project(openiked LANGUAGES C)
-else()
+if (APPLE AND CMAKE_GENERATOR MATCHES "Xcode")
 project(openiked LANGUAGES C Swift)
+else()
+project(openiked LANGUAGES C)
 endif()
 
 set(CMAKE_C_STANDARD 11)
@@ -31,6 +31,7 @@ include(CheckIncludeFiles)
 include(CheckLinkerFlag)
 
 option(BUILD_LIBRARY "create library instaed of excutable." OFF)
+option(THREAD "use thread instead of process(macOS)." OFF)
 option(HOMEBREW "use libraries installed by Homebrew(macOS)." OFF)
 option(ASAN "Enable Address SANitizer." OFF)
 option(UBSAN "Enable Undefined SANitizer." OFF)
@@ -47,7 +48,9 @@ include(Configure.cmake)
 
 add_subdirectory(compat)
 add_subdirectory(iked)
+if (APPLE AND BUILD_LIBRARY)
 add_subdirectory(swift)
+endif()
 if (NOT BUILD_LIBRARY)
 # Not supported by library-based openiked.
 add_subdirectory(ikectl)

@@ -19,6 +19,11 @@ if (CMAKE_SYSTEM_NAME MATCHES "iOS")
 		HAVE_SOCKADDR_SA_LEN
 		SWIFT_BRIDGE
 	)
+	if(THREAD)
+		add_compile_definitions(
+			THREAD
+		)
+	endif()
 	set(HAVE_VROUTE OFF)
 	# iOS always needs library version.
 	set(BUILD_LIBRARY ON)
@@ -40,6 +45,11 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
 	else()
 		include_directories("/usr/local/opt/openssl/include")
 		link_directories("/usr/local/opt/openssl/lib")
+	endif()
+	if(BUILD_LIBRARY AND THREAD)
+		add_compile_definitions(
+			THREAD
+		)
 	endif()
 	if (NOT BUILD_LIBRARY)
 		set(HAVE_VROUTE ON)

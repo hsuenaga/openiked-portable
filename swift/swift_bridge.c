@@ -49,7 +49,16 @@
 #endif
 
 struct swift_bridge *swift_bridge;
-struct iked	*iked_env;
+
+struct global_env {
+	pthread_mutex_t lock;
+	bool isHeld;
+	struct iked	*env;
+} envLock = {
+	.lock = PTHREAD_MUTEX_INITIALIZER,
+	.isHeld = false
+};
+__thread struct iked *iked_env;
 
 static inline bool
 swift_puts(const char *string)
@@ -112,6 +121,103 @@ static struct privsep_proc procs[] = {
 	{ "ikev2",	PROC_IKEV2,	parent_dispatch_ikev2, ikev2 }
 };
 
+struct iked *
+retainEnv(void)
+{
+	pthread_mutex_lock(&envLock.lock);
+	if (envLock.env == NULL) {
+		pthread_mutex_unlock(&envLock.lock);
+		return NULL;
+	}
+	envLock.isHeld = true;
+	return envLock.env;
+}
+
+void
+releaseEnv(void)
+{
+	envLock.isHeld = false;
+	pthread_mutex_unlock(&envLock.lock);
+}
+
+struct iked *
+copyEnv(void)
+{
+	struct iked *env;
+	struct iked *newEnv = NULL;
+
+	env = retainEnv();
+	if (env == NULL) {
+		goto done;
+	}
+	newEnv = calloc(1, sizeof(*newEnv));
+	if (newEnv == NULL) {
+		goto done;
+	}
+	memcpy(newEnv, env, sizeof(*newEnv));
+
+	// Create own imsg buffers for the new environment
+	for (int id = 0; id < PROC_MAX; id++) {
+		if (env->sc_ps.ps_ievs[id] == NULL)
+				continue;
+		newEnv->sc_ps.ps_ievs[id] = calloc(env->sc_ps.ps_instances[id],
+		    sizeof(struct imsgev));
+		if (newEnv->sc_ps.ps_ievs[id] == NULL) {
+			free(newEnv);
+			newEnv = NULL;
+			goto done;
+		}
+		for (int i = 0; i < env->sc_ps.ps_instances[id]; i++) {
+			newEnv->sc_ps.ps_ievs[id][i].handler = env->sc_ps.ps_ievs[id][i].handler;
+			newEnv->sc_ps.ps_ievs[id][i].events = env->sc_ps.ps_ievs[id][i].events;
+			newEnv->sc_ps.ps_ievs[id][i].proc = env->sc_ps.ps_ievs[id][i].proc;
+			newEnv->sc_ps.ps_ievs[id][i].data = &newEnv->sc_ps.ps_ievs[id][i];
+		}
+	}
+
+	// Copy ps_pipes
+	for (int src = 0; src < PROC_MAX; src++) {
+		if (env->sc_ps.ps_pipes[src] == NULL)
+				continue;
+		// src array: [PROC_SOURCE][Instance]
+		newEnv->sc_ps.ps_pipes[src] = calloc(env->sc_ps.ps_instances[src],
+		    sizeof(struct privsep_pipes));
+		if (newEnv->sc_ps.ps_pipes[src] == NULL) {
+			free(newEnv);
+			newEnv = NULL;
+			goto done;
+		}
+		memcpy(newEnv->sc_ps.ps_pipes[src], env->sc_ps.ps_pipes[src],
+		    env->sc_ps.ps_instances[src] * sizeof(struct privsep_pipes));
+
+		// dst array: [PROC_DESTINATION][Instance]
+		for (int i = 0; i < env->sc_ps.ps_instances[src]; i++) {
+			struct privsep_pipes *pp_src, *pp_dst;
+			pp_src = &env->sc_ps.ps_pipes[src][i];
+			pp_dst = &newEnv->sc_ps.ps_pipes[src][i];
+
+			for (int dst = 0; dst < PROC_MAX; dst++) {
+				if (pp_src->pp_pipes[dst] == NULL)
+					continue;
+				pp_dst->pp_pipes[dst] = calloc(env->sc_ps.ps_instances[dst],
+				    sizeof(int));
+				if (pp_dst->pp_pipes[dst] == NULL) {
+					free(newEnv);
+					newEnv = NULL;
+					goto done;
+				}
+				memcpy(pp_dst->pp_pipes[dst], pp_src->pp_pipes[dst],
+				    env->sc_ps.ps_instances[dst] * sizeof(int));
+			}
+		}
+	}
+
+done:
+	// XXX: release partially allocated resources if newEnv is NULL
+	releaseEnv();
+	return newEnv;
+}
+
 /* called from swift */
 bool
 initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
@@ -129,14 +235,21 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 	bridge->swift_vprintf = hnd_vp;
 	bridge->swift_error = hnd_err;
 
+	env = retainEnv();
+	if (env != NULL) {
+		swift_error(1, "initIKE: env already initialized");
+		return false;
+	}
 	if ((env = calloc(1, sizeof(*env))) == NULL) {
 		swift_error(1, "calloc: ctx");
 		free(bridge);
 		swift_bridge = bridge = NULL;
+		releaseEnv();
 		return false;
 	}
-	/* only 1 instance */
+	envLock.env = env;
 	iked_env = env;
+	releaseEnv();
 
 	bridge->port = IKED_NATT_PORT;
 	bridge->configurationFile = IKED_CONFIG;
@@ -198,6 +311,7 @@ startIKE(void)
 	if (iked_env == NULL)
 		return false;
 
+	retainEnv();
 	iked_env->sc_opts = opts;
 	iked_env->sc_nattmode = natt_mode;
 	iked_env->sc_nattport = port;
@@ -227,6 +341,7 @@ startIKE(void)
 	ps->ps_instance = proc_instance;
 	if (title != NULL)
 		ps->ps_title[proc_id] = title;
+	releaseEnv();
 
 	/* only the parent returns */
 	proc_init(ps, procs, nitems(procs), debug, 0, NULL, proc_id);
@@ -267,10 +382,12 @@ startIKE(void)
 void
 parent_connected(struct privsep *ps)
 {
-	struct iked	*env = ps->ps_env;
+	struct iked	*env = ps->ps_env;	
 
+	retainEnv();
 	if (parent_configure(env) == -1)
 		fatalx("configuration failed");
+	releaseEnv();
 }
 
 int
@@ -400,7 +517,9 @@ parent_sig_handler(int sig, short event, void *arg)
 		 * This is safe because libevent uses async signal handlers
 		 * that run in the event loop and not in signal context.
 		 */
+		retainEnv();
 		parent_reload(ps->ps_env, 0, NULL);
+		releaseEnv();
 		break;
 	case SIGPIPE:
 		log_info("%s: ignoring SIGPIPE", __func__);
@@ -453,8 +572,11 @@ parent_sig_handler(int sig, short event, void *arg)
 			free(cause);
 		} while (pid > 0 || (pid == -1 && errno == EINTR));
 
-		if (die)
+		if (die) {
+			retainEnv();
 			parent_shutdown(ps->ps_env);
+			releaseEnv();
+		}
 		break;
 	default:
 		fatalx("unexpected signal");
@@ -464,7 +586,7 @@ parent_sig_handler(int sig, short event, void *arg)
 int
 parent_dispatch_ca(int fd, struct privsep_proc *p, struct imsg *imsg)
 {
-	struct iked	*env = iked_env;
+	struct iked	*env = retainEnv();
 
 	switch (imsg->hdr.type) {
 	case IMSG_CTL_ACTIVE:
@@ -475,16 +597,18 @@ parent_dispatch_ca(int fd, struct privsep_proc *p, struct imsg *imsg)
 		ocsp_connect(env, imsg);
 		break;
 	default:
+		releaseEnv();
 		return (-1);
 	}
 
+	releaseEnv();
 	return (0);
 }
 
 int
 parent_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 {
-	struct iked	*env = iked_env;
+	struct iked	*env = retainEnv();
 	int		 v;
 	char		*str = NULL;
 	unsigned int	 type = imsg->hdr.type;
@@ -512,18 +636,21 @@ parent_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		proc_forward_imsg(&env->sc_ps, imsg, PROC_CERT, -1);
 
 		/* return 1 to let proc.c handle it locally */
+		releaseEnv();
 		return (1);
 	default:
+		releaseEnv();
 		return (-1);
 	}
 
+	releaseEnv();
 	return (0);
 }
 
 int
 parent_dispatch_ikev2(int fd, struct privsep_proc *p, struct imsg *imsg)
 {
-	struct iked	*env = iked_env;
+	struct iked	*env = retainEnv();
 
 	switch (imsg->hdr.type) {
 #if defined(HAVE_VROUTE)
@@ -540,9 +667,11 @@ parent_dispatch_ikev2(int fd, struct privsep_proc *p, struct imsg *imsg)
 		return (vroute_getcloneroute(env, imsg));
 #endif
 	default:
+		releaseEnv();
 		return (-1);
 	}
 
+	releaseEnv();
 	return (0);
 }
 
