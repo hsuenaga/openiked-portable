@@ -64,7 +64,7 @@ struct global_env {
 __thread struct iked *iked_env;
 __thread int parent_sock_fileno = -1;
 
-static inline bool
+bool
 swift_puts(const char *string)
 {
 	if (swift_bridge == NULL)
@@ -75,7 +75,7 @@ swift_puts(const char *string)
 	return swift_bridge->swift_puts(string);
 }
 
-static inline int
+int
 swift_vprintf(const char *fmt, va_list ap)
 {
 	if (swift_bridge == NULL)
@@ -86,7 +86,7 @@ swift_vprintf(const char *fmt, va_list ap)
 	return swift_bridge->swift_vprintf(fmt, ap);
 }
 
-static inline int
+int
 swift_printf(const char *fmt, ...)
 {
 	va_list ap;
@@ -99,7 +99,7 @@ swift_printf(const char *fmt, ...)
 	return ret;
 }
 
-static inline void
+void
 swift_error(int num, const char *message)
 {
 	if (swift_bridge == NULL)
@@ -146,6 +146,7 @@ releaseEnv(void)
 	assert(envLock.isHeld == true && envLock.owner == pthread_self());
 
 	envLock.isHeld = false;
+	envLock.owner = 0;
 	pthread_mutex_unlock(&envLock.lock);
 }
 

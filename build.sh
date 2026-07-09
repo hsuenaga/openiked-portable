@@ -19,6 +19,7 @@ fi
 
 cmake -B build \
 	-G Xcode \
+	-DHOMEBREW=ON \
 	-DBUILD_LIBRARY=ON \
 	-DTHREAD=ON \
 	-DCMAKE_INSTALL_RPATH=@loader_path/../lib \

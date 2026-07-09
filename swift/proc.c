@@ -105,7 +105,8 @@ thread_main(void *arg0)
 	if (p == NULL || p->p_init == NULL)
 		fatalx("%s: process %d missing process initialization",
 		    __func__, privsep_process);
-
+	swift_printf("thread_main: %s %d/%d, pid %d", p->p_title,
+	    instance_id + 1, ps->ps_instances[p->p_id], getpid());
 	p->p_init(ps, p);
 
 	fatalx("failed to initiate child process");

@@ -148,8 +148,7 @@ if(DEFINED ENV{CLUSTERFUZZLITE})
 	)
 else()
 	target_link_libraries(iked-shared
-		PUBLIC util event crypto ssl compat
-	)
+		PRIVATE util event crypto ssl compat)
 endif()
 
 list(APPEND LIBS
@@ -166,7 +165,7 @@ if (WITH_SYSTEMD)
 endif()
 
 target_link_libraries(iked
-	PUBLIC ${LIBS}
+	PRIVATE ${LIBS}
 )
 
 add_custom_command(

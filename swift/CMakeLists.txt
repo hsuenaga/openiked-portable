@@ -9,11 +9,19 @@ add_library(swiftike STATIC
 	swift_bridge.c
 )
 
-target_include_directories(swiftike PUBLIC
+target_include_directories(swiftike PRIVATE
 	../iked
+	../compat
+	$ENV{DESTDIR}/usr/include
 )
 
-target_link_libraries(swiftike PUBLIC
+target_link_directories(swiftike PRIVATE
+	../iked
+	../compat
+	$ENV{DESTDIR}/usr/lib
+)
+
+target_link_libraries(swiftike PRIVATE
 	iked
 )
 
@@ -21,7 +29,22 @@ add_executable(openiked
 	main.swift
 )
 
-target_link_libraries(openiked PUBLIC
+#target_include_directories(openiked PRIVATE
+#	../iked
+#	../compat
+#	$ENV{DESTDIR}/usr/include
+#)
+
+target_link_directories(openiked PRIVATE
+	../iked
+	../compat
+	$ENV{DESTDIR}/usr/lib
+)
+
+target_link_libraries(openiked PRIVATE
+	iked
+	iked-shared
+	compat
 	swiftike
 )
 

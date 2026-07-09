@@ -53,6 +53,10 @@ extern __thread int parent_sock_fileno;
 struct iked *retainEnv(void);
 void releaseEnv(void);
 struct iked *copyEnv(const char *title);
+bool swift_puts(const char *string);
+int swift_vprintf(const char *fmt, va_list ap);
+int swift_printf(const char *fmt, ...);
+void swift_error(int num, const char *message);
 
 /* Swift API */
 bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err);
