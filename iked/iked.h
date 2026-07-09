@@ -114,7 +114,11 @@ struct ctl_conn {
 };
 TAILQ_HEAD(ctl_connlist, ctl_conn);
 
+#ifdef THREAD
+extern __thread enum privsep_procid privsep_process;
+#else
 extern enum privsep_procid privsep_process;
+#endif
 
 /*
  * Runtime structures

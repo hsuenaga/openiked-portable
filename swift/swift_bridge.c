@@ -38,6 +38,7 @@
 #include <pwd.h>
 #include <event.h>
 #include <pthread.h>
+#include <assert.h>
 
 #include "iked.h"
 #include "ikev2.h"
@@ -52,13 +53,16 @@ struct swift_bridge *swift_bridge;
 
 struct global_env {
 	pthread_mutex_t lock;
+	pthread_t owner;
 	bool isHeld;
 	struct iked	*env;
 } envLock = {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
+	.owner = 0,
 	.isHeld = false
 };
 __thread struct iked *iked_env;
+__thread int parent_sock_fileno = -1;
 
 static inline bool
 swift_puts(const char *string)
@@ -124,93 +128,76 @@ static struct privsep_proc procs[] = {
 struct iked *
 retainEnv(void)
 {
+	assert(envLock.isHeld == false || envLock.owner != pthread_self());
+
 	pthread_mutex_lock(&envLock.lock);
 	if (envLock.env == NULL) {
 		pthread_mutex_unlock(&envLock.lock);
 		return NULL;
 	}
 	envLock.isHeld = true;
+	envLock.owner = pthread_self();
 	return envLock.env;
 }
 
 void
 releaseEnv(void)
 {
+	assert(envLock.isHeld == true && envLock.owner == pthread_self());
+
 	envLock.isHeld = false;
 	pthread_mutex_unlock(&envLock.lock);
 }
 
 struct iked *
-copyEnv(void)
+copyEnv(const char *title)
 {
 	struct iked *env;
 	struct iked *newEnv = NULL;
+	struct privsep *ps = NULL;
+	int proc_id;
+	int proc_instance = 0;
+
+	if (title == NULL)
+		return NULL;
+	proc_id = proc_getid(procs, nitems(procs), title);
+	if (proc_id == PROC_MAX) {
+		swift_error(1, "copyEnv: invalid title");
+		return NULL;
+	}
 
 	env = retainEnv();
 	if (env == NULL) {
-		goto done;
+		return NULL;
 	}
+
+	// iked_env lock held
 	newEnv = calloc(1, sizeof(*newEnv));
 	if (newEnv == NULL) {
 		goto done;
 	}
+
 	memcpy(newEnv, env, sizeof(*newEnv));
-
-	// Create own imsg buffers for the new environment
-	for (int id = 0; id < PROC_MAX; id++) {
-		if (env->sc_ps.ps_ievs[id] == NULL)
-				continue;
-		newEnv->sc_ps.ps_ievs[id] = calloc(env->sc_ps.ps_instances[id],
-		    sizeof(struct imsgev));
-		if (newEnv->sc_ps.ps_ievs[id] == NULL) {
-			free(newEnv);
-			newEnv = NULL;
-			goto done;
-		}
-		for (int i = 0; i < env->sc_ps.ps_instances[id]; i++) {
-			newEnv->sc_ps.ps_ievs[id][i].handler = env->sc_ps.ps_ievs[id][i].handler;
-			newEnv->sc_ps.ps_ievs[id][i].events = env->sc_ps.ps_ievs[id][i].events;
-			newEnv->sc_ps.ps_ievs[id][i].proc = env->sc_ps.ps_ievs[id][i].proc;
-			newEnv->sc_ps.ps_ievs[id][i].data = &newEnv->sc_ps.ps_ievs[id][i];
-		}
-	}
-
-	// Copy ps_pipes
-	for (int src = 0; src < PROC_MAX; src++) {
-		if (env->sc_ps.ps_pipes[src] == NULL)
-				continue;
-		// src array: [PROC_SOURCE][Instance]
-		newEnv->sc_ps.ps_pipes[src] = calloc(env->sc_ps.ps_instances[src],
-		    sizeof(struct privsep_pipes));
-		if (newEnv->sc_ps.ps_pipes[src] == NULL) {
-			free(newEnv);
-			newEnv = NULL;
-			goto done;
-		}
-		memcpy(newEnv->sc_ps.ps_pipes[src], env->sc_ps.ps_pipes[src],
-		    env->sc_ps.ps_instances[src] * sizeof(struct privsep_pipes));
-
-		// dst array: [PROC_DESTINATION][Instance]
-		for (int i = 0; i < env->sc_ps.ps_instances[src]; i++) {
-			struct privsep_pipes *pp_src, *pp_dst;
-			pp_src = &env->sc_ps.ps_pipes[src][i];
-			pp_dst = &newEnv->sc_ps.ps_pipes[src][i];
-
-			for (int dst = 0; dst < PROC_MAX; dst++) {
-				if (pp_src->pp_pipes[dst] == NULL)
-					continue;
-				pp_dst->pp_pipes[dst] = calloc(env->sc_ps.ps_instances[dst],
-				    sizeof(int));
-				if (pp_dst->pp_pipes[dst] == NULL) {
-					free(newEnv);
-					newEnv = NULL;
-					goto done;
-				}
-				memcpy(pp_dst->pp_pipes[dst], pp_src->pp_pipes[dst],
-				    env->sc_ps.ps_instances[dst] * sizeof(int));
-			}
-		}
-	}
+	// detach external objects.
+	newEnv->sc_defaultcon = NULL;
+	newEnv->sc_priv = NULL;	
+	newEnv->sc_certreq = NULL;
+	newEnv->sc_vroute = NULL;
+	newEnv->sc_sock4[0] = NULL;
+	newEnv->sc_sock4[1] = NULL;
+	newEnv->sc_sock6[0] = NULL;
+	newEnv->sc_sock6[1] = NULL;
+	newEnv->sc_ocsp_url = NULL;
+	// construct individual privsep structure.
+	ps = &newEnv->sc_ps;
+	memset(ps, 0, sizeof(*ps));
+	ps->ps_env = newEnv;
+	ps->ps_pw = env->sc_ps.ps_pw;
+	ps->ps_csock.cs_name = env->sc_ps.ps_csock.cs_name;
+	ps->ps_noaction = env->sc_ps.ps_noaction;
+	ps->ps_instance = proc_instance;
+	ps->ps_title[proc_id] = title;
+	// further initialization will be done by proc_init().
 
 done:
 	// XXX: release partially allocated resources if newEnv is NULL
@@ -222,9 +209,14 @@ done:
 bool
 initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 {
-	struct swift_bridge *bridge;
-	struct iked *env;
+	struct swift_bridge *bridge = NULL;
+	struct iked *env = NULL;
 
+	if (envLock.isHeld) {
+		swift_error(1, "initIKE: env lock already held");
+		return false;
+	}
+	pthread_mutex_lock(&envLock.lock);
 	if ((bridge = calloc(1, sizeof(*bridge))) == NULL) {
 		if (hnd_err != NULL)
 			hnd_err(1, "calloc: bridge");
@@ -234,22 +226,19 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 	bridge->swift_puts = hnd_puts;
 	bridge->swift_vprintf = hnd_vp;
 	bridge->swift_error = hnd_err;
-
-	env = retainEnv();
-	if (env != NULL) {
+	
+	if (envLock.env != NULL) {
 		swift_error(1, "initIKE: env already initialized");
-		return false;
+		pthread_mutex_unlock(&envLock.lock);
+		goto bailout;
 	}
 	if ((env = calloc(1, sizeof(*env))) == NULL) {
 		swift_error(1, "calloc: ctx");
-		free(bridge);
-		swift_bridge = bridge = NULL;
-		releaseEnv();
-		return false;
+		pthread_mutex_unlock(&envLock.lock);
+		goto bailout;
 	}
 	envLock.env = env;
 	iked_env = env;
-	releaseEnv();
 
 	bridge->port = IKED_NATT_PORT;
 	bridge->configurationFile = IKED_CONFIG;
@@ -259,8 +248,20 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 	bridge->procInstance = 0;
 	bridge->opts = 0;
 
+	pthread_mutex_unlock(&envLock.lock);
 	swift_puts("iked initialization complete.");
 	return true;
+
+bailout:
+	if (bridge) {
+		free(bridge);
+		swift_bridge = bridge = NULL;
+	}
+	if (env) {
+		free(env);
+	}
+
+	return false;
 }
 
 void
@@ -326,8 +327,10 @@ startIKE(void)
 	group_init();
 	policy_init(iked_env);
 
+#if 0
 	if ((ps->ps_pw =  getpwnam(IKED_USER)) == NULL)
 		errx(1, "unknown user %s", IKED_USER);
+#endif	
 
 	/* Configure the control socket */
 	ps->ps_csock.cs_name = sock;

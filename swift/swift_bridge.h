@@ -5,6 +5,11 @@
 #include <stdarg.h>
 #include <pthread.h>
 
+#ifdef PROC_PARENT_SOCK_FILENO
+#undef PROC_PARENT_SOCK_FILENO
+#endif
+#define PROC_PARENT_SOCK_FILENO parent_sock_fileno
+
 /*
  * closure:
  * { (_ string: UnsafePointer<CChar>?) -> CBool in ... }
@@ -41,12 +46,13 @@ struct swift_bridge {
 };
 
 extern struct swift_bridge *swift_bridge;
+extern __thread int parent_sock_fileno;
 
 
 /* Internal API. no need to call from Swift? */
 struct iked *retainEnv(void);
 void releaseEnv(void);
-struct iked *copyEnv(void);
+struct iked *copyEnv(const char *title);
 
 /* Swift API */
 bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err);

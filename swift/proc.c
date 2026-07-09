@@ -34,17 +34,18 @@
 #include <pwd.h>
 #include <event.h>
 #include <imsg.h>
+#include <pthread.h>
 
 #if HAVE_GRP_H
 #include <grp.h>
 #endif
 
 #include "iked.h"
+#include "swift_bridge.h"
 
-enum privsep_procid privsep_process;
+__thread enum privsep_procid privsep_process;
 
-void	 proc_exec(struct privsep *, struct privsep_proc *, unsigned int, int,
-	    char **);
+void	 proc_exec(struct privsep *, struct privsep_proc *, unsigned int);
 void	 proc_setup(struct privsep *, struct privsep_proc *, unsigned int);
 void	 proc_open(struct privsep *, int, int);
 void	 proc_accept(struct privsep *, int, enum privsep_procid,
@@ -54,6 +55,64 @@ void	 proc_shutdown(struct privsep_proc *);
 void	 proc_sig_handler(int, short, void *);
 void	 proc_range(struct privsep *, enum privsep_procid, int *, int *);
 int	 proc_dispatch_null(int, struct privsep_proc *, struct imsg *);
+
+struct thread_arg {
+	struct privsep_proc *procs;
+	unsigned int nproc;
+	const char *title;
+	int instance_id;
+	int parent_fd;
+};
+
+static void *
+thread_main(void *arg0)
+{
+	struct thread_arg *arg = (struct thread_arg *)arg0;
+	struct privsep *ps = NULL;
+	unsigned int		 proc;
+	struct privsep_proc	*p = NULL;
+	int proc_id;
+
+	if (arg == NULL)
+		fatalx("%s: missing thread argument", __func__);
+
+	// Extract arg
+	struct privsep_proc *procs = arg->procs;
+	unsigned int nproc = arg->nproc;
+	const char *title = arg->title;
+	int instance_id = arg->instance_id;
+	int parent_fd = arg->parent_fd;
+	free(arg0); arg = arg0 = NULL;
+
+	// Initialize TLS
+	iked_env = copyEnv(title);
+	ps = &iked_env->sc_ps;
+
+	// Setup FD
+	PROC_PARENT_SOCK_FILENO = parent_fd;
+
+	// Initialize context
+	proc_id = proc_getid(procs, nproc, title);
+	if (proc_id == PROC_MAX)
+		fatalx("invalid process name");
+
+	for (proc = 0; proc < nproc; proc++) {
+		if (procs[proc].p_id != proc_id)
+			continue;
+		p = &procs[proc];
+		break;
+	}
+	if (p == NULL || p->p_init == NULL)
+		fatalx("%s: process %d missing process initialization",
+		    __func__, privsep_process);
+
+	p->p_init(ps, p);
+
+	fatalx("failed to initiate child process");
+
+	return NULL; // not reached.
+}
+
 
 enum privsep_procid
 proc_getid(struct privsep_proc *procs, unsigned int nproc,
@@ -74,75 +133,27 @@ proc_getid(struct privsep_proc *procs, unsigned int nproc,
 }
 
 void
-proc_exec(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc,
-    int argc, char **argv)
+proc_exec(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc)
 {
-	unsigned int		 proc, nargc, i, proc_i;
-	char			**nargv;
-	struct privsep_proc	*p;
-	char			 num[32];
-	int			 fd;
+	const int instance_id = 0; // XXX: multiple instance is not supported yet.
+	pthread_t tid; // XXX: need place holder for each thread.
 
-	/* Prepare the new process argv. */
-	nargv = calloc(argc + 5, sizeof(char *));
-	if (nargv == NULL)
-		fatal("%s: calloc", __func__);
+	for (unsigned int proc = 0; proc < nproc; proc++) {
+		struct thread_arg *arg = calloc(1, sizeof(*arg));
+		struct privsep_proc	*p = NULL;
 
-	/* Copy call argument first. */
-	nargc = 0;
-	nargv[nargc++] = argv[0];
+		if (arg == NULL)
+			fatal("%s: calloc", __func__);
 
-	/* Set process name argument and save the position. */
-	nargv[nargc++] = "-P";
-	proc_i = nargc;
-	nargc++;
-
-	/* Point process instance arg to stack and copy the original args. */
-	nargv[nargc++] = "-I";
-	nargv[nargc++] = num;
-	for (i = 1; i < (unsigned int) argc; i++)
-		nargv[nargc++] = argv[i];
-
-	nargv[nargc] = NULL;
-
-	for (proc = 0; proc < nproc; proc++) {
 		p = &procs[proc];
 
-		/* Update args with process title. */
-		nargv[proc_i] = (char *)(uintptr_t)p->p_title;
-
-		/* Fire children processes. */
-		for (i = 0; i < ps->ps_instances[p->p_id]; i++) {
-			/* Update the process instance number. */
-			snprintf(num, sizeof(num), "%u", i);
-
-			fd = ps->ps_pipes[p->p_id][i].pp_pipes[PROC_PARENT][0];
-			ps->ps_pipes[p->p_id][i].pp_pipes[PROC_PARENT][0] = -1;
-
-			switch (fork()) {
-			case -1:
-				fatal("%s: fork", __func__);
-				break;
-			case 0:
-				/* Prepare parent socket. */
-				if (fd != PROC_PARENT_SOCK_FILENO) {
-					if (dup2(fd, PROC_PARENT_SOCK_FILENO)
-					    == -1)
-						fatal("dup2");
-				} else if (fcntl(fd, F_SETFD, 0) == -1)
-					fatal("fcntl");
-
-				execvp(argv[0], nargv);
-				fatal("%s: execvp", __func__);
-				break;
-			default:
-				/* Close child end. */
-				close(fd);
-				break;
-			}
-		}
+		arg->procs = procs;
+		arg->nproc = nproc;
+		arg->title = p->p_title;
+		arg->instance_id = instance_id;
+		arg->parent_fd = ps->ps_pipes[p->p_id][instance_id].pp_pipes[PROC_PARENT][0];
+		pthread_create(&tid, NULL, thread_main, (void *)arg);		
 	}
-	free(nargv);
 }
 
 void
@@ -261,24 +272,12 @@ proc_init(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc,
 		}
 
 		/* Engage! */
-		proc_exec(ps, procs, nproc, argc, argv);
+		proc_exec(ps, procs, nproc);
 		return;
 	}
 
 	/* Initialize a child */
-	for (proc = 0; proc < nproc; proc++) {
-		if (procs[proc].p_id != proc_id)
-			continue;
-		p = &procs[proc];
-		break;
-	}
-	if (p == NULL || p->p_init == NULL)
-		fatalx("%s: process %d missing process initialization",
-		    __func__, proc_id);
-
-	p->p_init(ps, p);
-
-	fatalx("failed to initiate child process");
+	fatalx("process separation is not supported.");
 }
 
 void
