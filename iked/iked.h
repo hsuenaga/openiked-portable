@@ -907,6 +907,7 @@ extern __thread struct iked	*iked_env;
 #else
 extern struct iked	*iked_env;
 #endif
+extern void (*log_ext)(int priority, const char *message, va_list ap);
 
 /* control.c */
 void	 control(struct privsep *, struct privsep_proc *);

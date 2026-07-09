@@ -86,6 +86,12 @@ swift_vprintf(const char *fmt, va_list ap)
 }
 
 void
+swift_vlog(int priority, const char *message, va_list ap)
+{
+	return swift_vprintf(message, ap);
+}
+
+void
 swift_error(int num, const char *message)
 {
 	if (swift_bridge == NULL || swift_bridge->swift_error == NULL) {
@@ -226,6 +232,7 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 	bridge->swift_puts = hnd_puts;
 	bridge->swift_vprintf = hnd_vp;
 	bridge->swift_error = hnd_err;
+	log_ext = swift_vlog;
 	
 	if (envLock.env != NULL) {
 		swift_error(1, "initIKE: env already initialized");
@@ -242,8 +249,8 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 	bridge->port = IKED_NATT_PORT;
 	bridge->configurationFile = IKED_CONFIG;
 	bridge->controlSocket = IKED_SOCKET;
-	bridge->debug = 0;
-	bridge->verbose = 0;
+	bridge->debug = 2;
+	bridge->verbose = 1;
 	bridge->procInstance = 0;
 	bridge->opts = 0;
 

@@ -24,13 +24,11 @@
 #include <errno.h>
 #include <time.h>
 
-#ifdef IOS_BRIDGE
-#include "ios_bridge.h"
-#endif
-
 static int	 debug;
 static int	 verbose;
 const char	*log_procname;
+
+void (*log_ext)(int priority, const char *message, va_list ap);
 
 void	log_init(int, int);
 void	log_procinit(const char *);
@@ -115,9 +113,10 @@ vlog(int pri, const char *fmt, va_list ap)
 		fflush(stderr);
 	} else
 		vsyslog(pri, fmt, ap);
-#ifdef IOS_BRIDGE
-	ios_vprintf(fmt, ap);
-#endif
+
+	if (log_ext) {
+		log_ext(pri, fmt, ap);
+	}
 
 	errno = saved_errno;
 }
