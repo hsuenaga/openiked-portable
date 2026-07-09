@@ -61,16 +61,16 @@ struct global_env {
 	.owner = 0,
 	.isHeld = false
 };
-__thread struct iked *iked_env;
+__thread struct iked *iked_env = NULL;
 __thread int parent_sock_fileno = -1;
 
 bool
 swift_puts(const char *string)
 {
-	if (swift_bridge == NULL)
-		return false;
-	if (swift_bridge->swift_puts == NULL)
-		return false;
+	if (swift_bridge == NULL || swift_bridge->swift_puts == NULL) {
+		fprintf(stderr, "swift_puts: %s\n", string);
+		return true;
+	}
 
 	return swift_bridge->swift_puts(string);
 }
@@ -78,12 +78,23 @@ swift_puts(const char *string)
 int
 swift_vprintf(const char *fmt, va_list ap)
 {
-	if (swift_bridge == NULL)
-		return false;
-	if (swift_bridge->swift_vprintf == NULL)
-		return false;
+	if (swift_bridge == NULL || swift_bridge->swift_vprintf == NULL) {
+		return vfprintf(stderr, fmt, ap);
+	}
 
 	return swift_bridge->swift_vprintf(fmt, ap);
+}
+
+void
+swift_error(int num, const char *message)
+{
+	if (swift_bridge == NULL || swift_bridge->swift_error == NULL) {
+		fprintf(stderr, "swift_error: %d: %s\n", num, message);
+		return;
+	}
+
+	swift_bridge->swift_error(num, message);
+	return;
 }
 
 int
@@ -97,18 +108,6 @@ swift_printf(const char *fmt, ...)
 	va_end(ap);
 
 	return ret;
-}
-
-void
-swift_error(int num, const char *message)
-{
-	if (swift_bridge == NULL)
-		return;
-	if (swift_bridge->swift_error == NULL)
-		return;
-
-	swift_bridge->swift_error(num, message);
-	return;
 }
 
 void	 parent_shutdown(struct iked *);
@@ -239,7 +238,6 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 		goto bailout;
 	}
 	envLock.env = env;
-	iked_env = env;
 
 	bridge->port = IKED_NATT_PORT;
 	bridge->configurationFile = IKED_CONFIG;
@@ -289,8 +287,8 @@ addSymbol(char *definition)
 }
 
 
-bool
-startIKE(void)
+void *
+ike_main(void *arg)
 {
 	int			 c;
 	int			 debug = swift_bridge->debug;
@@ -305,15 +303,19 @@ startIKE(void)
 	enum privsep_procid	 proc_id = PROC_PARENT;
 	int			 proc_instance = swift_bridge->procInstance;
 
+	swift_printf("Starting IKEv2 daemon %s (pid: %d)\n", IKED_VERSION, getpid());
 	/* log to stderr until daemonized */
 	log_init(debug ? debug : 1, LOG_DAEMON);
 
-	if (swift_bridge == NULL)
+	if (swift_bridge == NULL) {
+		swift_printf("Error: swift_bridge is NULL\n");
 		return false;
-	if (iked_env == NULL)
+	}		
+	iked_env = retainEnv();
+	if (iked_env == NULL) {
+		swift_printf("Error: iked_env is NULL\n");
 		return false;
-
-	retainEnv();
+	}
 	iked_env->sc_opts = opts;
 	iked_env->sc_nattmode = natt_mode;
 	iked_env->sc_nattport = port;
@@ -348,13 +350,17 @@ startIKE(void)
 	releaseEnv();
 
 	/* only the parent returns */
+	swift_printf("Starting worker threads...\n");
 	proc_init(ps, procs, nitems(procs), debug, 0, NULL, proc_id);
 
+	swift_printf("setproctitle...\n");
 	setproctitle("parent");
 	log_procinit("parent");
 
+	swift_printf("event_init...\n");
 	event_init();
 
+	swift_printf("set signal handlers...\n");
 	signal_set(&ps->ps_evsigint, SIGINT, parent_sig_handler, ps);
 	signal_set(&ps->ps_evsigterm, SIGTERM, parent_sig_handler, ps);
 	signal_set(&ps->ps_evsigchld, SIGCHLD, parent_sig_handler, ps);
@@ -373,14 +379,33 @@ startIKE(void)
 	vroute_init(iked_env);
 #endif
 
+	swift_printf("proc_connect...\n");
 	proc_connect(ps, parent_connected);
 
+	swift_printf("dispatching events...\n");
 	event_dispatch();
 
+	swift_printf("exiting...\n");
 	log_debug("%d parent exiting", getpid());
 	parent_shutdown(iked_env);
 
-	return (0);
+	return NULL;
+}
+
+bool
+startIKE(void)
+{
+	pthread_t thread;
+	int ret;
+
+	swift_printf("Starting IKE in a new thread...\n");
+	ret = pthread_create(&thread, NULL, ike_main, NULL);
+	if (ret != 0) {
+		swift_error(1, "pthread_create failed.");
+		return false;
+	}
+	swift_printf("IKE started in thread %lu.\n", thread);
+	return true;
 }
 
 void

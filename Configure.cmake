@@ -8,6 +8,10 @@ else()
 	link_directories("/usr/local/lib")
 endif()
 
+if (OSSL_LEGACY)
+	add_compile_definitions(OSSL_LEGACY)
+endif()
+
 if (CMAKE_SYSTEM_NAME MATCHES "iOS")
 	if (NOT DEFINED CMAKE_INSTALL_SYSCONFDIR)
 		set (CMAKE_INSTALL_SYSCONFDIR ${CMAKE_INSTALL_PREFIX}/etc)

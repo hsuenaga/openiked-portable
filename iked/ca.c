@@ -2127,13 +2127,15 @@ ca_sslinit(void)
 	if (OSSL_PROVIDER_load(NULL, "default") == NULL)
 		fatal("error enabling default provider");
 
+#ifdef OSSL_LEGACY
 	/*
 	 * This provider contains unsafe or obsolete, such as MD4 which
 	 * we need for MSCHAPv2
 	 */
 	if (OSSL_PROVIDER_load(NULL, "legacy") == NULL)
 		fatal("error enabling legacy provider");
-#endif
+#endif /* OSSL_LEGACY */
+#endif /* OPENSSL_VERSION_NUMBER >= 0x30000000 */
 }
 
 void

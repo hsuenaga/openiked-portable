@@ -1,7 +1,5 @@
 import Foundation
-
-print("Hello, World")
-
+import Dispatch
 /*
  * retain closure. anonymous clousres are also supported.
  * Apple's C compiler has ARC support. -fblocks is a kind of
@@ -14,21 +12,17 @@ let swiftPuts = { (_ string: UnsafePointer<CChar>?) -> CBool in
         return false
     }
     let msg = String(cString:string)
-    DispatchQueue.main.async {
-        print("swiftPuts: \(msg)")
-    }
+    print("swiftPuts: \(msg)")
     return true
 }
 
-let swiftPrintf = { (_ string: UnsafePointer<CChar>?, _ va: CVaListPointer?) -> CInt in
+let swiftVprintf = { (_ string: UnsafePointer<CChar>?, _ va: CVaListPointer?) -> CInt in
     guard let string, let va else {
         return -1
     }
     let fmt = String(cString: string)
     let message = NSString(format: fmt, arguments: va) as String
-    DispatchQueue.main.async {
-        print("swiftPrintf: \(message)")
-    }
+    print("swiftVprintf: \(message)")
     return CInt(message.count)
 }
 
@@ -37,11 +31,22 @@ let swiftError = { (_ num: CInt, _ string: UnsafePointer<CChar>?) -> Void in
         return
     }
     let message = String(cString: string)
-    DispatchQueue.main.async {
-        print("swiftError: \(num): \(message)")
-    }
+    print("swiftError: \(num): \(message)")
     return
 }
-
-initIKE(swiftPrintf, swiftPuts, swiftError)
+print("Initializing IKE with Swift bridge...")
+//initIKE(swiftVprintf, swiftPuts, swiftError)
+initIKE(nil, nil, nil)
+print("Starting IKE...")
 startIKE();
+print("IKE started. Waiting for events...")
+
+let timer = DispatchSource.makeTimerSource(queue: .main)
+timer.schedule(deadline: .now(), repeating: .seconds(1))
+timer.setEventHandler {
+    print("tick")
+}
+timer.resume()
+dispatchMain()
+
+print("Exiting IKE...")

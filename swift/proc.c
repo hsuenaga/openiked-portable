@@ -76,6 +76,7 @@ thread_main(void *arg0)
 	if (arg == NULL)
 		fatalx("%s: missing thread argument", __func__);
 
+
 	// Extract arg
 	struct privsep_proc *procs = arg->procs;
 	unsigned int nproc = arg->nproc;
@@ -83,6 +84,8 @@ thread_main(void *arg0)
 	int instance_id = arg->instance_id;
 	int parent_fd = arg->parent_fd;
 	free(arg0); arg = arg0 = NULL;
+
+	swift_printf("thread_main: %s, pid %d\n", title, getpid());
 
 	// Initialize TLS
 	iked_env = copyEnv(title);
@@ -103,10 +106,8 @@ thread_main(void *arg0)
 		break;
 	}
 	if (p == NULL || p->p_init == NULL)
-		fatalx("%s: process %d missing process initialization",
+		fatalx("%s: process %d missing process initialization\n",
 		    __func__, privsep_process);
-	swift_printf("thread_main: %s %d/%d, pid %d", p->p_title,
-	    instance_id + 1, ps->ps_instances[p->p_id], getpid());
 	p->p_init(ps, p);
 
 	fatalx("failed to initiate child process");
@@ -231,16 +232,18 @@ proc_init(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc,
 	unsigned int		 dst;
 	int			 fds[2];
 
+	swift_printf("proc_init: proc_id=%d, proc_name=%s, nproc=%d\n",
+	    proc_id, ps->ps_title[proc_id], nproc);
 	/* Don't initiate anything if we are not really going to run. */
-	if (ps->ps_noaction)
+	if (ps->ps_noaction) {
+		swift_printf("proc_init: noaction mode, skipping process initialization.\n");
 		return;
+	}
 
 	if (proc_id == PROC_PARENT) {
+		swift_printf("proc_init: parent process, setting up child processes.\n");
 		privsep_process = PROC_PARENT;
 		proc_setup(ps, procs, nproc);
-
-		if (!debug && daemon(0, 0) == -1)
-			fatal("failed to daemonize");
 
 		/*
 		 * Create the children sockets so we can use them
@@ -273,6 +276,7 @@ proc_init(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc,
 		}
 
 		/* Engage! */
+		swift_printf("proc_exec: executing child processes...\n");
 		proc_exec(ps, procs, nproc);
 		return;
 	}
@@ -561,31 +565,7 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 			fatalx("%s: control_init", __func__);
 	}
 
-	/* Use non-standard user */
-	if (p->p_pw != NULL)
-		pw = p->p_pw;
-	else
-		pw = ps->ps_pw;
-
-	/* Change root directory */
-	if (p->p_chroot != NULL)
-		root = p->p_chroot;
-	else
-		root = pw->pw_dir;
-
-	if (chroot(root) == -1)
-		fatal("%s: chroot", __func__);
-	if (chdir("/") == -1)
-		fatal("%s: chdir(\"/\")", __func__);
-
 	privsep_process = p->p_id;
-
-	setproctitle("%s", p->p_title);
-
-	if (setgroups(1, &pw->pw_gid) ||
-	    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
-	    setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid))
-		fatal("%s: cannot drop privileges", __func__);
 
 	event_init();
 
