@@ -12,7 +12,9 @@ let swiftPuts = { (_ string: UnsafePointer<CChar>?) -> CBool in
         return false
     }
     let msg = String(cString:string)
-    print("swiftPuts: \(msg)")
+    DispatchQueue.main.async {
+        print("swiftPuts: \(msg)")
+    }
     return true
 }
 
@@ -22,7 +24,9 @@ let swiftVprintf = { (_ string: UnsafePointer<CChar>?, _ va: CVaListPointer?) ->
     }
     let fmt = String(cString: string)
     let message = NSString(format: fmt, arguments: va) as String
-    print("swiftVprintf: \(message)")
+    DispatchQueue.main.async {
+        print("swiftVprintf: \(message)")
+    }
     return CInt(message.count)
 }
 
@@ -31,9 +35,12 @@ let swiftError = { (_ num: CInt, _ string: UnsafePointer<CChar>?) -> Void in
         return
     }
     let message = String(cString: string)
-    print("swiftError: \(num): \(message)")
+    DispatchQueue.main.async {
+        print("swiftError: \(num): \(message)")
+    }
     return
 }
+
 print("Initializing IKE with Swift bridge...")
 //initIKE(swiftVprintf, swiftPuts, swiftError)
 initIKE(nil, nil, nil)

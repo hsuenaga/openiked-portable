@@ -51,6 +51,14 @@
 
 struct swift_bridge *swift_bridge;
 
+pthread_mutex_t consoleLock = PTHREAD_MUTEX_INITIALIZER;
+static void retainConsole(void) {
+	pthread_mutex_lock(&consoleLock);
+}
+static void releaseConsole(void) {
+	pthread_mutex_unlock(&consoleLock);
+}
+
 struct global_env {
 	pthread_mutex_t lock;
 	pthread_t owner;
@@ -67,40 +75,58 @@ __thread int parent_sock_fileno = -1;
 bool
 swift_puts(const char *string)
 {
+	bool ret;
+
+	retainConsole();
 	if (swift_bridge == NULL || swift_bridge->swift_puts == NULL) {
 		fprintf(stderr, "swift_puts: %s\n", string);
+		releaseConsole();
 		return true;
 	}
 
-	return swift_bridge->swift_puts(string);
+	ret = swift_bridge->swift_puts(string);
+
+	releaseConsole();
+	return ret;
 }
 
 int
 swift_vprintf(const char *fmt, va_list ap)
 {
+	int ret;
+
+	retainConsole();
 	if (swift_bridge == NULL || swift_bridge->swift_vprintf == NULL) {
-		return vfprintf(stderr, fmt, ap);
+		ret = vfprintf(stderr, fmt, ap);
+		releaseConsole();
+		return ret;
 	}
 
-	return swift_bridge->swift_vprintf(fmt, ap);
-}
+	ret = swift_bridge->swift_vprintf(fmt, ap);
 
-void
-swift_vlog(int priority, const char *message, va_list ap)
-{
-	return swift_vprintf(message, ap);
+	releaseConsole();
+	return ret;
 }
 
 void
 swift_error(int num, const char *message)
 {
+	retainConsole();	
 	if (swift_bridge == NULL || swift_bridge->swift_error == NULL) {
 		fprintf(stderr, "swift_error: %d: %s\n", num, message);
+		releaseConsole();
 		return;
 	}
 
 	swift_bridge->swift_error(num, message);
+	releaseConsole();
 	return;
+}
+
+void
+swift_vlog(int priority, const char *message, va_list ap)
+{
+	(void)swift_vprintf(message, ap);
 }
 
 int
