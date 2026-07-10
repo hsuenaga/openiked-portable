@@ -1,11 +1,15 @@
 {
     "cSpell.words": [
+        "connfd",
         "evsigchld",
         "evsighup",
         "evsigint",
+        "evsignal",
         "evsigpipe",
         "evsigterm",
         "evsigusr",
+        "evtimer",
+        "evtpause",
         "fatalx",
         "ievs",
         "iked",
@@ -19,5 +23,6 @@
         "SIOCAIFGMEMB",
         "SIOCGIFGMEMB",
         "wroute"
-    ]
+    ],
+    "swift.swiftSDK": ""
 }

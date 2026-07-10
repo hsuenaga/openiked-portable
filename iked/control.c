@@ -154,11 +154,27 @@ control_listen(struct control_sock *cs)
 		log_warn("%s: listen", __func__);
 		return (-1);
 	}
-
+#ifdef THREAD
+	if (cs->cs_ev) {
+		event_free(cs->cs_ev);
+	}
+	cs->cs_ev = event_new(iked_ev_base, cs->cs_fd, EV_READ,
+	    control_accept, cs);
+	event_add(cs->cs_ev, NULL);
+#else
 	event_set(&cs->cs_ev, cs->cs_fd, EV_READ,
 	    control_accept, cs);
 	event_add(&cs->cs_ev, NULL);
+#endif
+
+#ifdef THREAD
+	if (cs->cs_evt) {
+		event_free(cs->cs_evt);
+	}
+	cs->cs_evt = evtimer_new(iked_ev_base, control_accept, cs);	
+#else
 	evtimer_set(&cs->cs_evt, control_accept, cs);
+#endif
 
 	return (0);
 }
@@ -173,7 +189,11 @@ control_accept(int listenfd, short event, void *arg)
 	struct ctl_conn		*c;
 	struct ctl_conn		*other;
 
+#ifdef THREAD
+	event_add(cs->cs_ev, NULL);
+#else
 	event_add(&cs->cs_ev, NULL);
+#endif
 	if ((event & EV_TIMEOUT))
 		return;
 
@@ -186,9 +206,13 @@ control_accept(int listenfd, short event, void *arg)
 		 */
 		if (errno == ENFILE || errno == EMFILE) {
 			struct timeval evtpause = { 1, 0 };
-
+#ifdef THREAD
+			event_del(cs->cs_ev);
+			evtimer_add(cs->cs_evt, &evtpause);
+#else
 			event_del(&cs->cs_ev);
 			evtimer_add(&cs->cs_evt, &evtpause);
+#endif
 		} else if (errno != EWOULDBLOCK && errno != EINTR &&
 		    errno != ECONNABORTED)
 			log_warn("%s: accept", __func__);
@@ -210,9 +234,18 @@ control_accept(int listenfd, short event, void *arg)
 	c->iev.handler = control_dispatch_imsg;
 	c->iev.events = EV_READ;
 	c->iev.data = cs;
+#ifdef THREAD
+	if (c->iev.ev) {
+		event_free(c->iev.ev);
+	}
+	c->iev.ev = event_new(iked_ev_base, c->iev.ibuf.fd, c->iev.events,
+	    c->iev.handler, c->iev.data);
+	event_add(c->iev.ev, NULL);
+#else
 	event_set(&c->iev.ev, c->iev.ibuf.fd, c->iev.events,
 	    c->iev.handler, c->iev.data);
 	event_add(&c->iev.ev, NULL);
+#endif
 
 	/* O(n^2), but n is small */
 	c->peerid = ctl_peerid++;
@@ -249,14 +282,25 @@ control_close(int fd, struct control_sock *cs)
 	imsgbuf_clear(&c->iev.ibuf);
 	TAILQ_REMOVE(&ctl_conns, c, entry);
 
+#ifdef THREAD
+	event_del(c->iev.ev);
+#else
 	event_del(&c->iev.ev);
+#endif
 	close(c->iev.ibuf.fd);
 
 	/* Some file descriptors are available again. */
+#ifdef THREAD
+	if (evtimer_pending(cs->cs_evt, NULL)) {
+		evtimer_del(cs->cs_evt);
+		event_add(cs->cs_ev, NULL);
+	}
+#else
 	if (evtimer_pending(&cs->cs_evt, NULL)) {
 		evtimer_del(&cs->cs_evt);
 		event_add(&cs->cs_ev, NULL);
 	}
+#endif
 
 	free(c);
 }

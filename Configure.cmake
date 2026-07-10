@@ -12,6 +12,10 @@ if (OSSL_LEGACY)
 	add_compile_definitions(OSSL_LEGACY)
 endif()
 
+add_compile_definitions(
+	IKED_TEST_CONFIG="${CMAKE_SOURCE_DIR}/iked.conf"
+)
+
 if (CMAKE_SYSTEM_NAME MATCHES "iOS")
 	if (NOT DEFINED CMAKE_INSTALL_SYSCONFDIR)
 		set (CMAKE_INSTALL_SYSCONFDIR ${CMAKE_INSTALL_PREFIX}/etc)
@@ -21,7 +25,6 @@ if (CMAKE_SYSTEM_NAME MATCHES "iOS")
 		IKED_CA="${CMAKE_INSTALL_SYSCONFDIR}/iked/"
 		HAVE_APPLE_NATT
 		HAVE_SOCKADDR_SA_LEN
-		SWIFT_BRIDGE
 	)
 	if(THREAD)
 		add_compile_definitions(

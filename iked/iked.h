@@ -72,7 +72,11 @@ struct ike_header {
 struct imsgev {
 	struct imsgbuf		 ibuf;
 	void			(*handler)(int, short, void *);
+#ifdef THREAD
+	struct event		 *ev;
+#else
 	struct event		 ev;
+#endif
 	struct privsep_proc	*proc;
 	void			*data;
 	short			 events;
@@ -98,8 +102,13 @@ struct imsgev {
 /* initially control.h */
 struct control_sock {
 	const char	*cs_name;
+#ifdef THREAD
+	struct event	 *cs_ev;
+	struct event	 *cs_evt;
+#else
 	struct event	 cs_ev;
 	struct event	 cs_evt;
+#endif /* THREAD*/
 	int		 cs_fd;
 	int		 cs_restricted;
 	void		*cs_env;
@@ -744,12 +753,21 @@ struct privsep {
 	unsigned int			 ps_instance;
 
 	/* Event and signal handlers */
+#ifdef THREAD
+	struct event			 *ps_evsigint;
+	struct event			 *ps_evsigterm;
+	struct event			 *ps_evsigchld;
+	struct event			 *ps_evsighup;
+	struct event			 *ps_evsigpipe;
+	struct event			 *ps_evsigusr1;
+#else
 	struct event			 ps_evsigint;
 	struct event			 ps_evsigterm;
 	struct event			 ps_evsigchld;
 	struct event			 ps_evsighup;
 	struct event			 ps_evsigpipe;
 	struct event			 ps_evsigusr1;
+#endif
 
 	struct iked			*ps_env;
 	unsigned int			 ps_connecting;
@@ -867,7 +885,11 @@ struct iked {
 
 struct iked_socket {
 	int			 sock_fd;
+#ifdef THREAD
+	struct event		 *sock_ev;
+#else
 	struct event		 sock_ev;
+#endif
 	struct iked		*sock_env;
 	struct sockaddr_storage	 sock_addr;
 };
@@ -904,6 +926,7 @@ void	 parent_reload(struct iked *, int, const char *);
 
 #ifdef THREAD
 extern __thread struct iked	*iked_env;
+extern __thread struct event_base *iked_ev_base;
 #else
 extern struct iked	*iked_env;
 #endif

@@ -1,9 +1,9 @@
 import Foundation
 import Dispatch
 /*
- * retain closure. anonymous clousres are also supported.
+ * retain closure. anonymous closures are also supported.
  * Apple's C compiler has ARC support. -fblocks is a kind of
- * C extenation not a kind of objC extension.
+ * C extension not a kind of objC extension.
  *
  * ... but manually retained closure sometime helps our debug.
  */
@@ -41,9 +41,34 @@ let swiftError = { (_ num: CInt, _ string: UnsafePointer<CChar>?) -> Void in
     return
 }
 
+func getApplicationSupportDirectory() -> URL? {
+    do {
+        // Passing 'create: true' ensures the directory is built if it doesn't exist
+        let appSupportURL = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return appSupportURL
+    } catch {
+        print("Error locating Application Support Directory: \(error.localizedDescription)")
+        return nil
+    }
+}
+
+// Usage
+if let supportDir = getApplicationSupportDirectory() {
+    print("Application Support Path: \(supportDir.path)")
+}
+
+let tmpDirectoryURL = FileManager.default.temporaryDirectory
+print("tmp: \(tmpDirectoryURL)")
+let ctrlSock = "\(tmpDirectoryURL.path)/iked.sock"
+
 print("Initializing IKE with Swift bridge...")
-//initIKE(swiftVprintf, swiftPuts, swiftError)
-initIKE(nil, nil, nil)
+initIKE(swiftVprintf, swiftPuts, swiftError, ctrlSock, nil)
+//initIKE(nil, nil, nil, "\(tmpDirectoryURL.path)/iked.sock", nil)
 print("Starting IKE...")
 startIKE();
 print("IKE started. Waiting for events...")

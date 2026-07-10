@@ -25,15 +25,12 @@ target_link_libraries(swiftike PRIVATE
 	iked
 )
 
+target_compile_options(swiftike PRIVATE -fblocks)
+
 add_executable(openiked
 	main.swift
+	bridge.h
 )
-
-#target_include_directories(openiked PRIVATE
-#	../iked
-#	../compat
-#	$ENV{DESTDIR}/usr/include
-#)
 
 target_link_directories(openiked PRIVATE
 	../iked

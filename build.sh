@@ -28,6 +28,7 @@ cmake -B build \
 	-DHOMEBREW=ON \
 	-DBUILD_LIBRARY=ON \
 	-DTHREAD=ON \
+	-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
 	-DCMAKE_INSTALL_RPATH=@loader_path/../lib \
 	-DCMAKE_TOOLCHAIN_FILE="./ios.toolchain.cmake" \
 	-DPLATFORM=MAC_ARM64 \

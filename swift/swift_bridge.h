@@ -37,8 +37,8 @@ struct swift_bridge {
 
 	/* configuration */
 	uint16_t	port;
-	const char*	configurationFile;
-	const char*	controlSocket;
+	char*	configurationFile;
+	char*	controlSocket;
 	int		debug;
 	int		verbose;
 	int		procInstance;
@@ -47,6 +47,7 @@ struct swift_bridge {
 
 extern struct swift_bridge *swift_bridge;
 extern __thread int parent_sock_fileno;
+extern __thread struct event_base *iked_ev_base;
 
 
 /* Internal API. no need to call from Swift? */
@@ -59,7 +60,7 @@ int swift_printf(const char *fmt, ...);
 void swift_error(int num, const char *message);
 
 /* Swift API */
-bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err);
+bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err, const char *control_sock, const char *conf_file);
 void deinitIKE(void);
 bool startIKE(void);
 

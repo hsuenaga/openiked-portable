@@ -671,8 +671,13 @@ config_getsocket(struct iked *env, struct imsg *imsg,
 	else
 		fatalx("%s: too many call", __func__);
 
+#ifdef THREAD
+	sock->sock_ev = event_new(iked_ev_base, sock->sock_fd,
+	    EV_READ|EV_PERSIST, cb, sock);
+#else
 	event_set(&sock->sock_ev, sock->sock_fd,
 	    EV_READ|EV_PERSIST, cb, sock);
+#endif
 
 	return (0);
 }
@@ -685,10 +690,18 @@ config_enablesocket(struct iked *env)
 
 	for (i = 0; i < nitems(env->sc_sock4); i++)
 		if ((sock = env->sc_sock4[i]) != NULL)
+#ifdef THREAD
+			event_add(sock->sock_ev, NULL);
+#else
 			event_add(&sock->sock_ev, NULL);
+#endif
 	for (i = 0; i < nitems(env->sc_sock6); i++)
 		if ((sock = env->sc_sock6[i]) != NULL)
+#ifdef THREAD
+			event_add(sock->sock_ev, NULL);
+#else
 			event_add(&sock->sock_ev, NULL);
+#endif
 }
 
 int

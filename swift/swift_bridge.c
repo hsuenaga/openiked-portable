@@ -71,6 +71,7 @@ struct global_env {
 };
 __thread struct iked *iked_env = NULL;
 __thread int parent_sock_fileno = -1;
+__thread struct event_base *iked_ev_base = NULL;
 
 bool
 swift_puts(const char *string)
@@ -101,8 +102,8 @@ swift_vprintf(const char *fmt, va_list ap)
 		releaseConsole();
 		return ret;
 	}
-
-	ret = swift_bridge->swift_vprintf(fmt, ap);
+	//ret = swift_bridge->swift_vprintf(fmt, ap);
+	ret = 0;
 
 	releaseConsole();
 	return ret;
@@ -239,11 +240,16 @@ done:
 
 /* called from swift */
 bool
-initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
+initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err, const char *control_sock, const char *conf_file)
 {
 	struct swift_bridge *bridge = NULL;
 	struct iked *env = NULL;
 
+	printf("using Control Socket: %s\n", control_sock);
+	if (conf_file == NULL) {
+		conf_file = IKED_TEST_CONFIG;
+	}
+	printf("using Configuration: %s\n", conf_file);
 	if (envLock.isHeld) {
 		swift_error(1, "initIKE: env lock already held");
 		return false;
@@ -273,8 +279,8 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 	envLock.env = env;
 
 	bridge->port = IKED_NATT_PORT;
-	bridge->configurationFile = IKED_CONFIG;
-	bridge->controlSocket = IKED_SOCKET;
+	bridge->configurationFile = strdup(conf_file);
+	bridge->controlSocket = strdup(control_sock);
 	bridge->debug = 2;
 	bridge->verbose = 1;
 	bridge->procInstance = 0;
@@ -286,6 +292,12 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err)
 
 bailout:
 	if (bridge) {
+		if (bridge->controlSocket) {
+			free(bridge->controlSocket);
+		}
+		if (bridge->configurationFile) {
+			free(bridge->configurationFile);
+		}
 		free(bridge);
 		swift_bridge = bridge = NULL;
 	}
@@ -320,6 +332,7 @@ addSymbol(char *definition)
 }
 
 
+// Parent thread
 void *
 ike_main(void *arg)
 {
@@ -330,20 +343,21 @@ ike_main(void *arg)
 	enum natt_mode		 natt_mode = NATT_FORCE;
 	in_port_t		 port = swift_bridge->port;
 	const char		*conffile = swift_bridge->configurationFile;
-	const char		*sock = swift_bridge->controlSocket;;
+	const char		*sock = swift_bridge->controlSocket;
 	const char		*errstr, *title = NULL;
 	struct privsep		*ps;
 	enum privsep_procid	 proc_id = PROC_PARENT;
 	int			 proc_instance = swift_bridge->procInstance;
 
 	swift_printf("Starting IKEv2 daemon %s (pid: %d)\n", IKED_VERSION, getpid());
+	
 	/* log to stderr until daemonized */
 	log_init(debug ? debug : 1, LOG_DAEMON);
 
 	if (swift_bridge == NULL) {
 		swift_printf("Error: swift_bridge is NULL\n");
 		return false;
-	}		
+	}
 	iked_env = retainEnv();
 	if (iked_env == NULL) {
 		swift_printf("Error: iked_env is NULL\n");
@@ -391,22 +405,26 @@ ike_main(void *arg)
 	log_procinit("parent");
 
 	swift_printf("event_init...\n");
-	event_init();
+	iked_ev_base = event_base_new();
+	if (iked_ev_base == NULL) {
+		swift_printf("failed to initialize event base.\n");
+		return NULL;
+	}
 
 	swift_printf("set signal handlers...\n");
-	signal_set(&ps->ps_evsigint, SIGINT, parent_sig_handler, ps);
-	signal_set(&ps->ps_evsigterm, SIGTERM, parent_sig_handler, ps);
-	signal_set(&ps->ps_evsigchld, SIGCHLD, parent_sig_handler, ps);
-	signal_set(&ps->ps_evsighup, SIGHUP, parent_sig_handler, ps);
-	signal_set(&ps->ps_evsigpipe, SIGPIPE, parent_sig_handler, ps);
-	signal_set(&ps->ps_evsigusr1, SIGUSR1, parent_sig_handler, ps);
+	ps->ps_evsigint = evsignal_new(iked_ev_base, SIGINT, parent_sig_handler, ps);
+	ps->ps_evsigterm = evsignal_new(iked_ev_base, SIGTERM, parent_sig_handler, ps);
+	ps->ps_evsigchld = evsignal_new(iked_ev_base, SIGCHLD, parent_sig_handler, ps);
+	ps->ps_evsighup = evsignal_new(iked_ev_base, SIGHUP, parent_sig_handler, ps);
+	ps->ps_evsigpipe = evsignal_new(iked_ev_base, SIGPIPE, parent_sig_handler, ps);
+	ps->ps_evsigusr1 = evsignal_new(iked_ev_base, SIGUSR1, parent_sig_handler, ps);
 
-	signal_add(&ps->ps_evsigint, NULL);
-	signal_add(&ps->ps_evsigterm, NULL);
-	signal_add(&ps->ps_evsigchld, NULL);
-	signal_add(&ps->ps_evsighup, NULL);
-	signal_add(&ps->ps_evsigpipe, NULL);
-	signal_add(&ps->ps_evsigusr1, NULL);
+	evsignal_add(ps->ps_evsigint, NULL);
+	evsignal_add(ps->ps_evsigterm, NULL);
+	evsignal_add(ps->ps_evsigchld, NULL);
+	evsignal_add(ps->ps_evsighup, NULL);
+	evsignal_add(ps->ps_evsigpipe, NULL);
+	evsignal_add(ps->ps_evsigusr1, NULL);
 
 #if defined(HAVE_VROUTE)
 	vroute_init(iked_env);
@@ -416,11 +434,19 @@ ike_main(void *arg)
 	proc_connect(ps, parent_connected);
 
 	swift_printf("dispatching events...\n");
-	event_dispatch();
+	event_base_dispatch(iked_ev_base);
 
 	swift_printf("exiting...\n");
 	log_debug("%d parent exiting", getpid());
 	parent_shutdown(iked_env);
+	event_free(ps->ps_evsigint); ps->ps_evsigint = NULL;
+	event_free(ps->ps_evsigterm); ps->ps_evsigterm = NULL;
+	event_free(ps->ps_evsigchld); ps->ps_evsigchld = NULL;
+	event_free(ps->ps_evsighup); ps->ps_evsighup = NULL;
+	event_free(ps->ps_evsigpipe); ps->ps_evsigpipe = NULL;
+	event_free(ps->ps_evsigusr1); ps->ps_evsigusr1 = NULL;
+	event_base_free(iked_ev_base);
+	iked_ev_base = NULL;
 
 	return NULL;
 }

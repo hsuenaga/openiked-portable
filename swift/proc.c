@@ -184,9 +184,10 @@ proc_connect(struct privsep *ps, void (*connected)(struct privsep *))
 			    ps->ps_pp->pp_pipes[dst][inst]) == -1)
 				fatal("%s: imsgbuf_init", __func__);
 			imsgbuf_allow_fdpass(&iev->ibuf);
-			event_set(&iev->ev, iev->ibuf.fd, iev->events,
-			    iev->handler, iev->data);
-			event_add(&iev->ev, NULL);
+			iev->ev = event_new(iked_ev_base, iev->ibuf.fd, iev->events,
+				iev->handler, iev->data);
+			// XXX: free() this somewhere...
+			event_add(iev->ev, NULL);
 		}
 	}
 
@@ -314,8 +315,9 @@ proc_accept(struct privsep *ps, int fd, enum privsep_procid dst,
 	if (imsgbuf_init(&iev->ibuf, fd) == -1)
 		fatal("%s: imsgbuf_init", __func__);
 	imsgbuf_allow_fdpass(&iev->ibuf);
-	event_set(&iev->ev, iev->ibuf.fd, iev->events, iev->handler, iev->data);
-	event_add(&iev->ev, NULL);
+	iev->ev = event_new(iked_ev_base, iev->ibuf.fd, iev->events, iev->handler, iev->data);
+	event_add(iev->ev, NULL);
+	// XXX: free this somewhere..
 }
 
 void
@@ -403,6 +405,7 @@ proc_kill(struct privsep *ps)
 
 	proc_close(ps);
 
+	// XXX: pthread_join() & pthread_wait() manner
 	do {
 		pid = waitpid(WAIT_ANY, &status, 0);
 		if (pid <= 0)
@@ -504,7 +507,9 @@ proc_close(struct privsep *ps)
 				continue;
 
 			/* Cancel the fd, close and invalidate the fd */
-			event_del(&(ps->ps_ievs[dst][n].ev));
+			event_del(ps->ps_ievs[dst][n].ev);
+			event_free(ps->ps_ievs[dst][n].ev);
+			ps->ps_ievs[dst][n].ev = NULL;
 			imsgbuf_clear(&(ps->ps_ievs[dst][n].ibuf));
 			close(pp->pp_pipes[dst][n]);
 			pp->pp_pipes[dst][n] = -1;
@@ -567,21 +572,21 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 
 	privsep_process = p->p_id;
 
-	event_init();
+	iked_ev_base = event_base_new();
 
-	signal_set(&ps->ps_evsigint, SIGINT, proc_sig_handler, p);
-	signal_set(&ps->ps_evsigterm, SIGTERM, proc_sig_handler, p);
-	signal_set(&ps->ps_evsigchld, SIGCHLD, proc_sig_handler, p);
-	signal_set(&ps->ps_evsighup, SIGHUP, proc_sig_handler, p);
-	signal_set(&ps->ps_evsigpipe, SIGPIPE, proc_sig_handler, p);
-	signal_set(&ps->ps_evsigusr1, SIGUSR1, proc_sig_handler, p);
+	ps->ps_evsigint = evsignal_new(iked_ev_base,  SIGINT, proc_sig_handler, p);
+	ps->ps_evsigterm = evsignal_new(iked_ev_base, SIGTERM, proc_sig_handler, p);
+	ps->ps_evsigchld = evsignal_new(iked_ev_base, SIGCHLD, proc_sig_handler, p);
+	ps->ps_evsighup = evsignal_new(iked_ev_base, SIGHUP, proc_sig_handler, p);
+	ps->ps_evsigpipe = evsignal_new(iked_ev_base, SIGPIPE, proc_sig_handler, p);
+	ps->ps_evsigusr1 = evsignal_new(iked_ev_base, SIGUSR1, proc_sig_handler, p);
 
-	signal_add(&ps->ps_evsigint, NULL);
-	signal_add(&ps->ps_evsigterm, NULL);
-	signal_add(&ps->ps_evsigchld, NULL);
-	signal_add(&ps->ps_evsighup, NULL);
-	signal_add(&ps->ps_evsigpipe, NULL);
-	signal_add(&ps->ps_evsigusr1, NULL);
+	signal_add(ps->ps_evsigint, NULL);
+	signal_add(ps->ps_evsigterm, NULL);
+	signal_add(ps->ps_evsigchld, NULL);
+	signal_add(ps->ps_evsighup, NULL);
+	signal_add(ps->ps_evsigpipe, NULL);
+	signal_add(ps->ps_evsigusr1, NULL);
 
 	proc_setup(ps, procs, nproc);
 	proc_accept(ps, PROC_PARENT_SOCK_FILENO, PROC_PARENT, 0);
@@ -598,7 +603,16 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 	if (run != NULL)
 		run(ps, p, arg);
 
-	event_dispatch();
+	event_base_dispatch(iked_ev_base);
+
+	event_free(ps->ps_evsigint); ps->ps_evsigint = NULL;
+	event_free(ps->ps_evsigterm); ps->ps_evsigterm = NULL;
+	event_free(ps->ps_evsigchld); ps->ps_evsigchld = NULL;
+	event_free(ps->ps_evsighup); ps->ps_evsighup = NULL;
+	event_free(ps->ps_evsigpipe); ps->ps_evsigpipe = NULL;
+	event_free(ps->ps_evsigusr1); ps->ps_evsigusr1 = NULL;
+	event_base_free(iked_ev_base);
+	iked_ev_base = NULL;
 
 	proc_shutdown(p);
 }
@@ -624,7 +638,8 @@ proc_dispatch(int fd, short event, void *arg)
 			fatal("%s: imsgbuf_read", __func__);
 		if (n == 0) {
 			/* this pipe is dead, so remove the event handler */
-			event_del(&iev->ev);
+			event_del(iev->ev);
+			event_free(iev->ev);
 			event_loopexit(NULL);
 			return;
 		}
@@ -633,7 +648,8 @@ proc_dispatch(int fd, short event, void *arg)
 	if (event & EV_WRITE) {
 		if (imsgbuf_write(ibuf) == -1) {
 			if (errno == EPIPE) {	/* Connection closed. */
-				event_del(&iev->ev);
+				event_del(iev->ev);
+				event_free(iev->ev);
 				event_loopexit(NULL);
 				return;
 			} else
@@ -738,9 +754,9 @@ imsg_event_add(struct imsgev *iev)
 	if (imsgbuf_queuelen(&iev->ibuf) > 0)
 		iev->events |= EV_WRITE;
 
-	event_del(&iev->ev);
-	event_set(&iev->ev, iev->ibuf.fd, iev->events, iev->handler, iev->data);
-	event_add(&iev->ev, NULL);
+	event_del(iev->ev);
+	event_assign(iev->ev, iked_ev_base, iev->ibuf.fd, iev->events, iev->handler, iev->data);
+	event_add(iev->ev, NULL);
 }
 
 int
