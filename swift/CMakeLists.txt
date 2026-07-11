@@ -6,6 +6,8 @@ set(LIB_DIRS)
 
 add_library(swiftike STATIC
 	proc.c
+	ipsec.c
+	pfkey.c
 	swift_bridge.c
 )
 
@@ -41,7 +43,7 @@ target_link_directories(openiked PRIVATE
 target_link_libraries(openiked PRIVATE
 	iked
 	iked-shared
-	compat
+	compat-static
 	swiftike
 )
 

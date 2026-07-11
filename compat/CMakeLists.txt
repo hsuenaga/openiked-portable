@@ -94,9 +94,17 @@ list(APPEND CFLAGS
 )
 
 if(SRCS)
+if(APPLE)
+	# XXX:include_next seems to confuse swift bridge header parsing.
+	add_library(compat OBJECT ${SRCS})
+	target_include_directories(compat PUBLIC .)
+	add_library(compat-static STATIC ${SRCS})
+	target_include_directories(compat-static PRIVATE .)
+else()
 	add_library(compat OBJECT ${SRCS})
 	target_compile_options(compat PRIVATE ${CFLAGS})
 	target_include_directories(compat PUBLIC .)
+endif()
 else()
 	add_library(compat INTERFACE)
 	target_include_directories(compat INTERFACE .)

@@ -77,11 +77,11 @@ if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD")
 elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 	list(APPEND SRCS ipsec.c pfkey.c)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+if(NOT BUILD_LIBRARY)
 	list(APPEND SRCS ipsec.c pfkey.c)
+endif()
 elseif(CMAKE_SYSTEM_NAME MATCHES "iOS")
-	# XXX: this implementation is not working on iOS
-	#      due to lack of previledged access to PFKEYv2 socket.
-	list(APPEND SRCS ipsec.c pfkey.c)
+	# NOTE: we need external ipsec.c and pfkey.c interface to work.
 elseif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
 	list(APPEND SRCS ipsec.c pfkey.c)
 elseif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")

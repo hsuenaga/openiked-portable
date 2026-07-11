@@ -1719,10 +1719,12 @@ check_file_secrecy(int fd, const char *fname)
 		warnx("%s: owner not root or current user", fname);
 		return (-1);
 	}
+#ifndef SANDBOX
 	if (st.st_mode & (S_IWGRP | S_IXGRP | S_IRWXO)) {
 		warnx("%s: group writable or world read/writable", fname);
 		return (-1);
 	}
+#endif
 	return (0);
 }
 

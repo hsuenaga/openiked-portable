@@ -12,6 +12,10 @@ if (OSSL_LEGACY)
 	add_compile_definitions(OSSL_LEGACY)
 endif()
 
+if (APPLE AND XCODE)
+	add_compile_definitions(SANDBOX)
+endif()
+
 add_compile_definitions(
 	IKED_TEST_CONFIG="${CMAKE_SOURCE_DIR}/iked.conf"
 )
@@ -25,6 +29,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "iOS")
 		IKED_CA="${CMAKE_INSTALL_SYSCONFDIR}/iked/"
 		HAVE_APPLE_NATT
 		HAVE_SOCKADDR_SA_LEN
+		NO_KERNEL_ESP
 	)
 	if(THREAD)
 		add_compile_definitions(
@@ -43,6 +48,7 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
 		IKED_CA="${CMAKE_INSTALL_SYSCONFDIR}/iked/"
 		HAVE_APPLE_NATT
 		HAVE_SOCKADDR_SA_LEN
+		NO_KERNEL_ESP
 	)
 	if (HOMEBREW AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
 		include_directories("/opt/homebrew/include")

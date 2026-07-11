@@ -61,7 +61,7 @@ target_link_libraries(ikectl
 	PRIVATE util event crypto ssl compat
 )
 
-if(CMAKE_SYSTEM_NAME MATCHES "iOS")
+if(APPLE)
 install(TARGETS ikectl
 	BUNDLE DESTINATION .
 	RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR}
