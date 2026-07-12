@@ -22,9 +22,9 @@
         "setverbose",
         "SIOCAIFGMEMB",
         "SIOCGIFGMEMB",
+        "Vprintf",
         "wroute"
     ],
-    "swift.swiftSDK": "",
     "cmake.configureArgs": [
         "-G Ninja",
 	"-DHOMEBREW=ON",
@@ -36,5 +36,4 @@
 	"-DPLATFORM=MAC_ARM64",
 	"-DDEPLOYMENT_TARGET=26.0"
     ]
-    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
 }

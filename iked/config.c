@@ -1052,12 +1052,14 @@ config_setkeys(struct iked *env)
 	struct iked_id		 pubkey;
 	struct iovec		 iov[2];
 	int			 ret = -1;
+	const char		*privkey_file = env->sc_path.privkey_file ?
+	    env->sc_path.privkey_file : IKED_PRIVKEY;
 
 	memset(&privkey, 0, sizeof(privkey));
 	memset(&pubkey, 0, sizeof(pubkey));
 
 	/* Read private key */
-	if ((fp = fopen(IKED_PRIVKEY, "r")) == NULL) {
+	if ((fp = fopen(privkey_file, "r")) == NULL) {
 		log_warn("%s: failed to open private key", __func__);
 		goto done;
 	}

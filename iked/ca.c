@@ -17,6 +17,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include "types.h"
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -994,11 +995,17 @@ ca_reload(struct iked *env)
 	unsigned int		 len;
 	X509_NAME		*subj;
 	char			*subj_name;
+	const char		*ca_dir = env->sc_path.ca_dir ?
+	    env->sc_path.ca_dir : IKED_CA_DIR;
+	const char		*crl_dir = env->sc_path.crl_dir ?
+	    env->sc_path.crl_dir : IKED_CRL_DIR;
+	const char		*cert_dir = env->sc_path.cert_dir ?
+	    env->sc_path.cert_dir : IKED_CERT_DIR;
 
 	/*
 	 * Load CAs
 	 */
-	if ((dir = opendir(IKED_CA_DIR)) == NULL)
+	if ((dir = opendir(ca_dir)) == NULL)
 		return (-1);
 
 	while ((entry = readdir(dir)) != NULL) {
@@ -1007,7 +1014,7 @@ ca_reload(struct iked *env)
 			continue;
 
 		if (snprintf(file, sizeof(file), "%s%s",
-		    IKED_CA_DIR, entry->d_name) < 0)
+		    ca_dir, entry->d_name) < 0)
 			continue;
 
 		if (!X509_load_cert_file(store->ca_calookup, file,
@@ -1024,7 +1031,7 @@ ca_reload(struct iked *env)
 	/*
 	 * Load CRLs for the CAs
 	 */
-	if ((dir = opendir(IKED_CRL_DIR)) == NULL)
+	if ((dir = opendir(crl_dir)) == NULL)
 		return (-1);
 
 	while ((entry = readdir(dir)) != NULL) {
@@ -1033,7 +1040,7 @@ ca_reload(struct iked *env)
 			continue;
 
 		if (snprintf(file, sizeof(file), "%s%s",
-		    IKED_CRL_DIR, entry->d_name) < 0)
+		    crl_dir, entry->d_name) < 0)
 			continue;
 
 		if (!X509_load_crl_file(store->ca_calookup, file,
@@ -1104,7 +1111,7 @@ ca_reload(struct iked *env)
 	/*
 	 * Load certificates
 	 */
-	if ((dir = opendir(IKED_CERT_DIR)) == NULL)
+	if ((dir = opendir(cert_dir)) == NULL)
 		return (-1);
 
 	while ((entry = readdir(dir)) != NULL) {
@@ -1113,7 +1120,7 @@ ca_reload(struct iked *env)
 			continue;
 
 		if (snprintf(file, sizeof(file), "%s%s",
-		    IKED_CERT_DIR, entry->d_name) < 0)
+		    cert_dir, entry->d_name) < 0)
 			continue;
 
 		if (!X509_load_cert_file(store->ca_certlookup, file,

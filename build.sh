@@ -4,6 +4,17 @@ CURDIR=`pwd`
 APP_XCODE="./build/swift/Debug/openiked.app/Contents/MacOS/openiked" 
 APP_NINJA="./build/swift/openiked.app/Contents/MacOS/openiked"
 
+function find_openiked() {
+	if [ -x $APP_XCODE ]; then
+		APP=$APP_XCODE
+	elif [ -x $APP_NINJA ]; then
+		APP=$APP_NINJA
+	else
+		echo "NO EXECUTABLE FOUND."
+		exit 1
+	fi
+}
+
 if [ "x$1" = "x-c" ]; then
 	if [ -d "build" ]; then
 		if [ -d "build.prev" ]; then
@@ -12,6 +23,7 @@ if [ "x$1" = "x-c" ]; then
 		mv build build.prev
 	fi
 elif [ "x$1" = "x-e" ]; then
+	find_openiked
 	if [ -x $APP ]; then
 		lldb $APP
 	fi
@@ -51,11 +63,5 @@ if [ $ret -ne 0 ]; then
 	exit $ret
 fi
 
-if [ -x $APP_XCODE ]; then
-	$APP_XCODE
-elif [ -x $APP_NINJA ]; then
-	$APP_NINJA
-else
-	echo "NO EXECUTABLE FOUND."
-	exit 1
-fi
+find_openiked
+$APP

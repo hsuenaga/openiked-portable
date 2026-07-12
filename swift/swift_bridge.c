@@ -284,6 +284,7 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err,
 	bridge->configurationFile = strdup(conf_file);
 	bridge->controlSocket = strdup(control_sock);
 	bridge->resourcePath = strdup(resource_dir);
+	(void)asprintf(&bridge->ikedPrivKey, "%s/etc/iked/private/local.key", resource_dir);
 	bridge->debug = 2;
 	bridge->verbose = 1;
 	bridge->procInstance = 0;

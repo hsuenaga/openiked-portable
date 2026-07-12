@@ -811,6 +811,13 @@ enum natt_mode {
 	NATT_FORCE,	/* send/recv with only NAT-T port */
 };
 
+struct iked_path {
+	const char *privkey_file;	// IKED_PRIVKEY
+	const char *ca_dir;		// IKED_CA_DIR
+	const char *crl_dir;		// IKED_CRL_DIR
+	const char *cert_dir;		// IKED_CERT_DIR
+};
+
 struct iked_static {
 	uint64_t		 st_alive_timeout;
 	int			 st_cert_partial_chain;
@@ -830,6 +837,7 @@ struct iked {
 	uint8_t				 sc_passive;
 	uint8_t				 sc_decoupled;
 
+	struct iked_path		 sc_path;
 	struct iked_static		 sc_static;
 
 #define sc_alive_timeout	sc_static.st_alive_timeout

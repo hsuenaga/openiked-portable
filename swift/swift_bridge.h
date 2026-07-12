@@ -37,9 +37,13 @@ struct swift_bridge {
 
 	/* configuration */
 	uint16_t	port;
-	char*	configurationFile;
-	char*	controlSocket;
-	char*   resourcePath;
+	char*		configurationFile;
+	char*		controlSocket;
+	char*   	resourcePath;
+	char*   	ikedPrivKey;
+	char*		ikedCADir;
+	char*		ikedCRLDir;
+	char*		ikedCertDir;
 	int		debug;
 	int		verbose;
 	int		procInstance;
