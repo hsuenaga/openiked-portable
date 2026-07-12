@@ -4,12 +4,6 @@ CURDIR=`pwd`
 APP_XCODE="./build/swift/Debug/openiked.app/Contents/MacOS/openiked" 
 APP_NINJA="./build/swift/openiked.app/Contents/MacOS/openiked"
 
-cat << EOS > compile_flags.txt
--I${DESTDIR}/usr/include
--I${CURDIR}/iked
--I${CURDIR}/compat
-EOS
-
 if [ "x$1" = "x-c" ]; then
 	if [ -d "build" ]; then
 		if [ -d "build.prev" ]; then
