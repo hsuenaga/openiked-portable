@@ -1,6 +1,7 @@
 build/
 build.prev/
 compile_flags.txt
+.cache/
 *.o
 *.bak
 *~
