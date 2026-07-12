@@ -1,0 +1,1 @@
+V	270711093728Z		01	unknown	/C=DE/ST=Lower Saxony/L=Hanover/O=OpenBSD/OU=iked/CN=edgesase.iiji.jp/emailAddress=reyk@openbsd.org

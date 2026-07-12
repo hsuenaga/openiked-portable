@@ -63,7 +63,7 @@ if(DEFINED ENV{DESTDIR})
 	)
 endif()
 
-add_library(iked-shared OBJECT
+add_library(iked-shared STATIC
 	ikev2_pld.c
 	imsg_util.c
 	log.c
@@ -126,7 +126,7 @@ if(BUILD_LIBRARY)
 	if(APPLE)
 		list(REMOVE_ITEM SRCS proc.c)
 	endif()
-	add_library(iked OBJECT ${SRCS})
+	add_library(iked STATIC ${SRCS})
 else()
 	add_executable(iked ${SRCS})
 endif()

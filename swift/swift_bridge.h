@@ -39,6 +39,7 @@ struct swift_bridge {
 	uint16_t	port;
 	char*	configurationFile;
 	char*	controlSocket;
+	char*   resourcePath;
 	int		debug;
 	int		verbose;
 	int		procInstance;
@@ -60,7 +61,7 @@ int swift_printf(const char *fmt, ...);
 void swift_error(int num, const char *message);
 
 /* Swift API */
-bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err, const char *control_sock, const char *conf_file);
+bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err, const char *control_sock, const char *conf_file, const char *resource_dir);
 void deinitIKE(void);
 bool startIKE(void);
 

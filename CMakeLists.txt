@@ -14,7 +14,7 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-if (APPLE AND CMAKE_GENERATOR MATCHES "Xcode")
+if (APPLE)
 project(openiked LANGUAGES C Swift)
 else()
 project(openiked LANGUAGES C)

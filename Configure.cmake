@@ -12,7 +12,7 @@ if (OSSL_LEGACY)
 	add_compile_definitions(OSSL_LEGACY)
 endif()
 
-if (APPLE AND XCODE)
+if (APPLE)
 	add_compile_definitions(SANDBOX)
 endif()
 

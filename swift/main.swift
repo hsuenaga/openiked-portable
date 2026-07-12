@@ -41,6 +41,12 @@ let swiftError = { (_ num: CInt, _ string: UnsafePointer<CChar>?) -> Void in
     return
 }
 
+
+guard let resourcePath = Bundle.main.resourcePath else {
+    print("No resource directory.")
+    exit(1)
+}
+
 func getApplicationSupportDirectory() -> URL? {
     do {
         // Passing 'create: true' ensures the directory is built if it doesn't exist
@@ -64,11 +70,12 @@ if let supportDir = getApplicationSupportDirectory() {
 
 let tmpDirectoryURL = FileManager.default.temporaryDirectory
 print("tmp: \(tmpDirectoryURL)")
+print("resource: \(resourcePath)")
 let ctrlSock = "\(tmpDirectoryURL.path)/iked.sock"
+let configFile = "\(resourcePath)/etc/iked/iked.conf"
 
 print("Initializing IKE with Swift bridge...")
-initIKE(swiftVprintf, swiftPuts, swiftError, ctrlSock, nil)
-//initIKE(nil, nil, nil, "\(tmpDirectoryURL.path)/iked.sock", nil)
+initIKE(swiftVprintf, swiftPuts, swiftError, ctrlSock, configFile, resourcePath)
 print("Starting IKE...")
 startIKE();
 print("IKE started. Waiting for events...")

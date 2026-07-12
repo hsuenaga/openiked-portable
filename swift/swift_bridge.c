@@ -240,16 +240,18 @@ done:
 
 /* called from swift */
 bool
-initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err, const char *control_sock, const char *conf_file)
+initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err,
+	 const char *control_sock, const char *conf_file, const char *resource_dir)
 {
 	struct swift_bridge *bridge = NULL;
 	struct iked *env = NULL;
 
 	printf("using Control Socket: %s\n", control_sock);
+	printf("using Resource: %s\n", resource_dir);
+	printf("using Configuration: %s\n", conf_file);
 	if (conf_file == NULL) {
 		conf_file = IKED_TEST_CONFIG;
 	}
-	printf("using Configuration: %s\n", conf_file);
 	if (envLock.isHeld) {
 		swift_error(1, "initIKE: env lock already held");
 		return false;
@@ -281,6 +283,7 @@ initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err, const
 	bridge->port = IKED_NATT_PORT;
 	bridge->configurationFile = strdup(conf_file);
 	bridge->controlSocket = strdup(control_sock);
+	bridge->resourcePath = strdup(resource_dir);
 	bridge->debug = 2;
 	bridge->verbose = 1;
 	bridge->procInstance = 0;
@@ -297,6 +300,9 @@ bailout:
 		}
 		if (bridge->configurationFile) {
 			free(bridge->configurationFile);
+		}
+		if (bridge->resourcePath) {
+			free(bridge->resourcePath);
 		}
 		free(bridge);
 		swift_bridge = bridge = NULL;

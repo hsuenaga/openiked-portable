@@ -43,6 +43,12 @@ list(APPEND CFLAGS
 	"$<$<CONFIG:DEBUG>:-O0;-g>"
 )
 
+if(APPLE)
+target_compile_definitions(ikectl PRIVATE
+	PREFIX="${CMAKE_CURRENT_SOURCE_DIR}/../swift"
+)
+endif()
+
 target_compile_options(ikectl PRIVATE ${CFLAGS})
 if(HAVE_LD_Z)
 if (CMAKE_SYSTEM_NAME MATCHES "iOS")
