@@ -1420,61 +1420,39 @@ ca_x509_serialize(X509 *x509)
 int
 ca_pubkey_serialize(EVP_PKEY *key, struct iked_id *id)
 {
-	RSA		*rsa = NULL;
-	EC_KEY		*ec = NULL;
 	uint8_t		*d;
 	int		 len = 0;
 	int		 ret = -1;
 
+	id->id_type = 0;
+	id->id_offset = 0;
+	ibuf_free(id->id_buf);
+	id->id_buf = NULL;
+
 	switch (EVP_PKEY_id(key)) {
 	case EVP_PKEY_RSA:
-		id->id_type = 0;
-		id->id_offset = 0;
-		ibuf_free(id->id_buf);
-		id->id_buf = NULL;
-
-		if ((rsa = EVP_PKEY_get0_RSA(key)) == NULL)
-			goto done;
-		if ((len = i2d_RSAPublicKey(rsa, NULL)) <= 0)
-			goto done;
-		if ((id->id_buf = ibuf_new(NULL, len)) == NULL)
-			goto done;
-
-		d = ibuf_data(id->id_buf);
-		if (i2d_RSAPublicKey(rsa, &d) != len) {
-			ibuf_free(id->id_buf);
-			id->id_buf = NULL;
-			goto done;
-		}
-
 		id->id_type = IKEV2_CERT_RSA_KEY;
 		break;
 	case EVP_PKEY_EC:
-		id->id_type = 0;
-		id->id_offset = 0;
-		ibuf_free(id->id_buf);
-		id->id_buf = NULL;
-
-		if ((ec = EVP_PKEY_get0_EC_KEY(key)) == NULL)
-			goto done;
-		if ((len = i2d_EC_PUBKEY(ec, NULL)) <= 0)
-			goto done;
-		if ((id->id_buf = ibuf_new(NULL, len)) == NULL)
-			goto done;
-
-		d = ibuf_data(id->id_buf);
-		if (i2d_EC_PUBKEY(ec, &d) != len) {
-			ibuf_free(id->id_buf);
-			id->id_buf = NULL;
-			goto done;
-		}
-
 		id->id_type = IKEV2_CERT_ECDSA;
 		break;
 	default:
 		log_debug("%s: unsupported key type %d", __func__,
 		    EVP_PKEY_id(key));
 		return (-1);
+	}
+
+	if ((len = i2d_PUBKEY(key, NULL)) <= 0) {
+		goto done;
+	}
+	if ((id->id_buf = ibuf_new(NULL, len)) == NULL)
+		goto done;
+
+	d = ibuf_data(id->id_buf);
+	if (i2d_PUBKEY(key, &d) != len) {
+		ibuf_free(id->id_buf);
+		id->id_buf = NULL;
+		goto done;
 	}
 
 	log_debug("%s: type %s length %d", __func__,
@@ -1489,61 +1467,39 @@ ca_pubkey_serialize(EVP_PKEY *key, struct iked_id *id)
 int
 ca_privkey_serialize(EVP_PKEY *key, struct iked_id *id)
 {
-	RSA		*rsa = NULL;
-	EC_KEY		*ec = NULL;
 	uint8_t		*d;
 	int		 len = 0;
 	int		 ret = -1;
 
+	id->id_type = 0;
+	id->id_offset = 0;
+	ibuf_free(id->id_buf);
+	id->id_buf = NULL;
+
 	switch (EVP_PKEY_id(key)) {
 	case EVP_PKEY_RSA:
-		id->id_type = 0;
-		id->id_offset = 0;
-		ibuf_free(id->id_buf);
-		id->id_buf = NULL;
-
-		if ((rsa = EVP_PKEY_get0_RSA(key)) == NULL)
-			goto done;
-		if ((len = i2d_RSAPrivateKey(rsa, NULL)) <= 0)
-			goto done;
-		if ((id->id_buf = ibuf_new(NULL, len)) == NULL)
-			goto done;
-
-		d = ibuf_data(id->id_buf);
-		if (i2d_RSAPrivateKey(rsa, &d) != len) {
-			ibuf_free(id->id_buf);
-			id->id_buf = NULL;
-			goto done;
-		}
-
 		id->id_type = IKEV2_CERT_RSA_KEY;
 		break;
 	case EVP_PKEY_EC:
-		id->id_type = 0;
-		id->id_offset = 0;
-		ibuf_free(id->id_buf);
-		id->id_buf = NULL;
-
-		if ((ec = EVP_PKEY_get0_EC_KEY(key)) == NULL)
-			goto done;
-		if ((len = i2d_ECPrivateKey(ec, NULL)) <= 0)
-			goto done;
-		if ((id->id_buf = ibuf_new(NULL, len)) == NULL)
-			goto done;
-
-		d = ibuf_data(id->id_buf);
-		if (i2d_ECPrivateKey(ec, &d) != len) {
-			ibuf_free(id->id_buf);
-			id->id_buf = NULL;
-			goto done;
-		}
-
 		id->id_type = IKEV2_CERT_ECDSA;
 		break;
 	default:
 		log_debug("%s: unsupported key type %d", __func__,
 		    EVP_PKEY_id(key));
 		return (-1);
+	}
+
+	if ((len = i2d_PrivateKey(key, NULL)) <= 0) {
+		goto done;
+	}
+	if ((id->id_buf = ibuf_new(NULL, len)) == NULL)
+		goto done;
+
+	d = ibuf_data(id->id_buf);
+	if (i2d_PrivateKey(key, &d) != len) {
+		ibuf_free(id->id_buf);
+		id->id_buf = NULL;
+		goto done;
 	}
 
 	log_debug("%s: type %s length %d", __func__,

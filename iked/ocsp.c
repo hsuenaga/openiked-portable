@@ -161,9 +161,19 @@ ocsp_connect(struct iked *env, struct imsg *imsg)
 		if (errno == EINPROGRESS) {
 			tv.tv_sec = OCSP_TIMEOUT;
 			tv.tv_usec = 0;
+#ifdef THREAD
+			if (oc->oc_sock.sock_ev) {
+				event_free(oc->oc_sock.sock_ev);
+				oc->oc_sock.sock_ev = NULL;
+			}
+			oc->oc_sock.sock_ev = event_new(iked_ev_base,
+			    fd, EV_WRITE, ocsp_connect_cb, oc);
+			event_add(oc->oc_sock.sock_ev, &tv);			
+#else
 			event_set(&oc->oc_sock.sock_ev, fd, EV_WRITE,
 			    ocsp_connect_cb, oc);
 			event_add(&oc->oc_sock.sock_ev, &tv);
+#endif
 			ret = 0;
 		} else
 			log_warn("%s: connect(%s, %s)",
@@ -418,8 +428,18 @@ ocsp_receive_fd(struct iked *env, struct imsg *imsg)
 
 	tv.tv_sec = OCSP_TIMEOUT;
 	tv.tv_usec = 0;
+#ifdef THREAD
+	if (sock->sock_ev) {
+		event_free(sock->sock_ev);
+		sock->sock_ev = NULL;
+	}
+	sock->sock_ev = event_new(iked_ev_base,
+	    sock->sock_fd, EV_WRITE, ocsp_callback, ocsp);
+	event_add(sock->sock_ev, &tv);
+#else
 	event_set(&sock->sock_ev, sock->sock_fd, EV_WRITE, ocsp_callback, ocsp);
 	event_add(&sock->sock_ev, &tv);
+#endif
 	ret = 0;
  done:
 	if (ret == -1)
@@ -496,14 +516,28 @@ ocsp_callback(int fd, short event, void *arg)
 		return;
 	}
 	if (BIO_should_read(ocsp->ocsp_cbio))
+#ifdef THREAD
+		event_set(sock->sock_ev, sock->sock_fd, EV_READ,
+		    ocsp_callback, ocsp);
+#else
 		event_set(&sock->sock_ev, sock->sock_fd, EV_READ,
 		    ocsp_callback, ocsp);
+#endif
 	else if (BIO_should_write(ocsp->ocsp_cbio))
+#ifdef THREAD
+		event_set(sock->sock_ev, sock->sock_fd, EV_WRITE,
+		    ocsp_callback, ocsp);
+#else
 		event_set(&sock->sock_ev, sock->sock_fd, EV_WRITE,
 		    ocsp_callback, ocsp);
+#endif
 	tv.tv_sec = OCSP_TIMEOUT;
 	tv.tv_usec = 0;
+#ifdef THREAD
+	event_add(sock->sock_ev, &tv);
+#else
 	event_add(&sock->sock_ev, &tv);
+#endif
 }
 
 /* parse the actual OCSP response */

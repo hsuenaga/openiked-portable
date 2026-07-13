@@ -351,6 +351,7 @@ sendtofrom(int s, void *buf, size_t len, int flags, struct sockaddr *to,
 {
 	struct iovec		 iov;
 	struct msghdr		 msg;
+#if defined(IP_SENDSRCADDR) || defined(IPV6_PKTINFO)
 	struct cmsghdr		*cmsg;
 #ifdef IP_SENDSRCADDR
 	struct sockaddr_in	*in;
@@ -358,6 +359,7 @@ sendtofrom(int s, void *buf, size_t len, int flags, struct sockaddr *to,
 #ifdef IPV6_PKTINFO
 	struct in6_pktinfo	*pkt6;
 	struct sockaddr_in6	*in6;
+#endif
 #endif
 	union {
 		struct cmsghdr	hdr;

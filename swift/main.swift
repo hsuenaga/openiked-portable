@@ -68,5 +68,4 @@ timer.setEventHandler {
 }
 timer.resume()
 dispatchMain()
-
-print("Exiting IKE...")
+// not reached.

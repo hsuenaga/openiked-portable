@@ -49,7 +49,11 @@ typedef SSIZE_T ssize_t;
 # define __bounded__(x, y, z)
 #endif
 
-#if !defined(HAVE_ATTRIBUTE__DEAD) && !defined(__dead)
+#if defined(BROKEN_DEAD) && defined(__dead)
+/* https://github.com/tmux/tmux/issues/2357 */
+#undef __dead
+#define __dead __attribute__((__noreturn__))
+#elif !defined(HAVE_ATTRIBUTE__DEAD) && !defined(__dead)
 #ifdef _MSC_VER
 #define __dead      __declspec(noreturn)
 #else
