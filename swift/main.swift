@@ -29,41 +29,31 @@ let swiftError : @convention(block) (CInt, UnsafePointer<CChar>?) -> Void = { nu
     return
 }
 
+//
+// Construct paths
+//
 guard let resourcePath = Bundle.main.resourcePath else {
     print("No resource directory.")
     exit(1)
 }
-
-func getApplicationSupportDirectory() -> URL? {
-    do {
-        // Passing 'create: true' ensures the directory is built if it doesn't exist
-        let appSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        return appSupportURL
-    } catch {
-        print("Error locating Application Support Directory: \(error.localizedDescription)")
-        return nil
-    }
-}
-
-// Usage
-if let supportDir = getApplicationSupportDirectory() {
-    print("Application Support Path: \(supportDir.path)")
-}
-
 let tmpDirectoryURL = FileManager.default.temporaryDirectory
-print("tmp: \(tmpDirectoryURL)")
-print("resource: \(resourcePath)")
+//print("tmp: \(tmpDirectoryURL)")
+//print("resource: \(resourcePath)")
 let ctrlSock = "\(tmpDirectoryURL.path)/iked.sock"
 let configFile = "\(resourcePath)/etc/iked/iked.conf"
 
 print("Initializing IKE with Swift bridge...")
 var ikedConfig = OpenIKEDConfig()
-withUnsafePointer(to: &ikedConfig) { ptr in
+ikedConfig.port = 4500
+ikedConfig.configurationFile = strdup("\(resourcePath)/etc/iked/iked.conf")
+ikedConfig.controlSocket = strdup("\(tmpDirectoryURL.path)/iked.sock")
+ikedConfig.ikedPrivKey = strdup("\(resourcePath)/etc/iked/private/local.key")
+ikedConfig.ikedCADir = strdup("\(resourcePath)/etc/iked/ca")
+ikedConfig.ikedCRLDir = strdup("\(resourcePath)/etc/iked/crls")
+ikedConfig.ikedCertDir = strdup("\(resourcePath)/etc/iked/certs")
+ikedConfig.resourcePath = strdup("\(resourcePath)")
+
+_ = withUnsafePointer(to: &ikedConfig) { ptr in
     initIKE(ptr, swiftPuts, swiftError)
 }
 
