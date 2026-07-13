@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <string.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -37,14 +36,28 @@ void
 timer_set(struct iked *env, struct iked_timer *tmr,
     void (*cb)(struct iked *, void *), void *arg)
 {
+#ifdef THREAD
+	if (tmr->tmr_ev &&
+	    evtimer_initialized(tmr->tmr_ev) &&
+	    evtimer_pending(tmr->tmr_ev, NULL))
+		evtimer_del(tmr->tmr_ev);
+#else
 	if (evtimer_initialized(&tmr->tmr_ev) &&
 	    evtimer_pending(&tmr->tmr_ev, NULL))
 		evtimer_del(&tmr->tmr_ev);
+#endif
 
 	tmr->tmr_env = env;
 	tmr->tmr_cb = cb;
 	tmr->tmr_cbarg = arg;
+#ifdef THREAD
+	if (tmr->tmr_ev) {
+		event_free(tmr->tmr_ev);
+	}
+	tmr->tmr_ev = evtimer_new(iked_ev_base, timer_callback, tmr);
+#else
 	evtimer_set(&tmr->tmr_ev, timer_callback, tmr);
+#endif
 }
 
 void
@@ -52,15 +65,25 @@ timer_add(struct iked *env, struct iked_timer *tmr, int timeout)
 {
 	struct timeval		 tv = { timeout };
 
+#ifdef THREAD
+	evtimer_add(tmr->tmr_ev, &tv);
+#else
 	evtimer_add(&tmr->tmr_ev, &tv);
+#endif
 }
 
 void
 timer_del(struct iked *env, struct iked_timer *tmr)
 {
+#ifdef THREAD
+	if (tmr->tmr_env == env && tmr->tmr_cb && tmr->tmr_ev &&
+	    evtimer_initialized(tmr->tmr_ev))
+		evtimer_del(tmr->tmr_ev);
+#else
 	if (tmr->tmr_env == env && tmr->tmr_cb &&
 	    evtimer_initialized(&tmr->tmr_ev))
 		evtimer_del(&tmr->tmr_ev);
+#endif
 }
 
 void
