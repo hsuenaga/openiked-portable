@@ -27,7 +27,6 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <string.h>
-#include <signal.h>
 #include <syslog.h>
 #include <errno.h>
 #include <err.h>
@@ -805,7 +804,7 @@ ca_getreq(struct iked *env, struct imsg *imsg)
 	case IKEV2_CERT_ECDSA:
 		/*
 		 * Find a local raw public key that matches the type
-		 * received in the CERTREQ payoad
+		 * received in the CERTREQ payload
 		 */
 		if (store->ca_pubkey.id_type != type ||
 		    store->ca_pubkey.id_buf == NULL)

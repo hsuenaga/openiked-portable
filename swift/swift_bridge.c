@@ -42,7 +42,6 @@
 #include <assert.h>
 
 #include "iked.h"
-#include "ikev2.h"
 #include "version.h"
 #include "swift_bridge.h"
 #include "swift_bridge_internal.h"

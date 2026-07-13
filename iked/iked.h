@@ -134,7 +134,11 @@ extern enum privsep_procid privsep_process;
  */
 
 struct iked_timer {
+#ifdef THREAD
+	struct event	 *tmr_ev;
+#else
 	struct event	 tmr_ev;
+#endif
 	struct iked	*tmr_env;
 	void		(*tmr_cb)(struct iked *, void *);
 	void		*tmr_cbarg;
@@ -421,7 +425,7 @@ struct iked_frag {
 	struct iked_frag_entry	**frag_arr;	/* list of fragment buffers */
 	size_t			  frag_count;	/* number of fragments received */
 #define IKED_FRAG_TOTAL_MAX	  111		/* upper limit (64kB / 576B) */
-	size_t			  frag_total;	/* total numbe of fragments */
+	size_t			  frag_total;	/* total number of fragments */
 	size_t			  frag_total_size;
 	uint8_t			  frag_nextpayload;
 
@@ -523,7 +527,7 @@ struct iked_sa {
 	uint64_t			 sa_rekeyspi;	/* peerspi CSA rekey */
 	struct ibuf			*sa_simult;	/* simultaneous rekey */
 
-	struct iked_ipcomp		 sa_ipcompi;	/* IPcomp initator */
+	struct iked_ipcomp		 sa_ipcompi;	/* IPcomp initiator */
 	struct iked_ipcomp		 sa_ipcompr;	/* IPcomp responder */
 
 	int				 sa_mobike;	/* MOBIKE */
@@ -863,8 +867,13 @@ struct iked {
 	void				*sc_priv;	/* per-process */
 
 	int				 sc_pfkey;	/* ike process */
+#ifdef THREAD
+	struct event			*sc_pfkeyev;
+	struct event			*sc_routeev;
+#else
 	struct event			 sc_pfkeyev;
 	struct event			 sc_routeev;
+#endif
 	uint8_t				 sc_certreqtype;
 	struct ibuf			*sc_certreq;
 	void				*sc_vroute;

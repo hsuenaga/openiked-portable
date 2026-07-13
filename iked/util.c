@@ -37,7 +37,6 @@
 #include <event.h>
 
 #include "iked.h"
-#include "ikev2.h"
 
 int
 socket_af(struct sockaddr *sa, in_port_t port)
