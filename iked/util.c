@@ -161,6 +161,8 @@ socket_bypass(int s, struct sockaddr *sa)
 		return (-1);
 	}
 #endif
+#elif defined(SANDBOX)
+	return(0);	
 #else /* __OpenBSD__ */
 	int	*a;
 	int	 a4[] = {

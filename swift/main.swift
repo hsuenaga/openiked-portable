@@ -48,9 +48,9 @@ ikedConfig.port = 4500
 ikedConfig.configurationFile = strdup("\(resourcePath)/etc/iked/iked.conf")
 ikedConfig.controlSocket = strdup("\(tmpDirectoryURL.path)/iked.sock")
 ikedConfig.ikedPrivKey = strdup("\(resourcePath)/etc/iked/private/local.key")
-ikedConfig.ikedCADir = strdup("\(resourcePath)/etc/iked/ca")
-ikedConfig.ikedCRLDir = strdup("\(resourcePath)/etc/iked/crls")
-ikedConfig.ikedCertDir = strdup("\(resourcePath)/etc/iked/certs")
+ikedConfig.ikedCADir = strdup("\(resourcePath)/etc/iked/ca/")
+ikedConfig.ikedCRLDir = strdup("\(resourcePath)/etc/iked/crls/")
+ikedConfig.ikedCertDir = strdup("\(resourcePath)/etc/iked/certs/")
 ikedConfig.resourcePath = strdup("\(resourcePath)")
 
 _ = withUnsafePointer(to: &ikedConfig) { ptr in
