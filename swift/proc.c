@@ -42,6 +42,7 @@
 
 #include "iked.h"
 #include "swift_bridge.h"
+#include "swift_bridge_internal.h"
 
 __thread enum privsep_procid privsep_process;
 

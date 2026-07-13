@@ -42,6 +42,8 @@ CM_ARGS_PLAIN=(
 CM_ARGS=(
 #	-G Xcode
 	-G Ninja
+#	-DCMAKE_BUILD_TYPE=Release
+	-DCMAKE_BUILD_TYPE=Debug
 	-DHOMEBREW=ON
 	-DBUILD_LIBRARY=ON
 	-DTHREAD=ON
@@ -55,7 +57,7 @@ CM_ARGS=(
 CMD="cmake -B build ${CM_ARGS[@]}"
 echo $CMD
 eval $CMD &&
-cmake --build build
+cmake --build build --config Debug
 ret=$?
 
 if [ $ret -ne 0 ]; then

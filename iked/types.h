@@ -19,6 +19,7 @@
 
 #ifndef IKED_TYPES_H
 #define IKED_TYPES_H
+#include <stdint.h>
 
 #ifndef IKED_USER
 #define IKED_USER		"_iked"

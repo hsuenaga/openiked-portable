@@ -24,6 +24,7 @@
 #ifdef __APPLE__
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#include <Block.h>
 #endif
 
 #include <stdlib.h>
@@ -44,105 +45,15 @@
 #include "ikev2.h"
 #include "version.h"
 #include "swift_bridge.h"
+#include "swift_bridge_internal.h"
 
 #ifdef WITH_APPARMOR
 #include "apparmor.h"
 #endif
 
-struct swift_bridge *swift_bridge;
-
-pthread_mutex_t consoleLock = PTHREAD_MUTEX_INITIALIZER;
-static void retainConsole(void) {
-	pthread_mutex_lock(&consoleLock);
-}
-static void releaseConsole(void) {
-	pthread_mutex_unlock(&consoleLock);
-}
-
-struct global_env {
-	pthread_mutex_t lock;
-	pthread_t owner;
-	bool isHeld;
-	struct iked	*env;
-} envLock = {
-	.lock = PTHREAD_MUTEX_INITIALIZER,
-	.owner = 0,
-	.isHeld = false
-};
-__thread struct iked *iked_env = NULL;
-__thread int parent_sock_fileno = -1;
-__thread struct event_base *iked_ev_base = NULL;
-
-bool
-swift_puts(const char *string)
-{
-	bool ret;
-
-	retainConsole();
-	if (swift_bridge == NULL || swift_bridge->swift_puts == NULL) {
-		fprintf(stderr, "swift_puts: %s\n", string);
-		releaseConsole();
-		return true;
-	}
-
-	ret = swift_bridge->swift_puts(string);
-
-	releaseConsole();
-	return ret;
-}
-
-int
-swift_vprintf(const char *fmt, va_list ap)
-{
-	int ret;
-
-	retainConsole();
-	if (swift_bridge == NULL || swift_bridge->swift_vprintf == NULL) {
-		ret = vfprintf(stderr, fmt, ap);
-		releaseConsole();
-		return ret;
-	}
-	//ret = swift_bridge->swift_vprintf(fmt, ap);
-	ret = 0;
-
-	releaseConsole();
-	return ret;
-}
-
-void
-swift_error(int num, const char *message)
-{
-	retainConsole();	
-	if (swift_bridge == NULL || swift_bridge->swift_error == NULL) {
-		fprintf(stderr, "swift_error: %d: %s\n", num, message);
-		releaseConsole();
-		return;
-	}
-
-	swift_bridge->swift_error(num, message);
-	releaseConsole();
-	return;
-}
-
-void
-swift_vlog(int priority, const char *message, va_list ap)
-{
-	(void)swift_vprintf(message, ap);
-}
-
-int
-swift_printf(const char *fmt, ...)
-{
-	va_list ap;
-	int ret;
-
-	va_start(ap, fmt);
-	ret = swift_vprintf(fmt, ap);
-	va_end(ap);
-
-	return ret;
-}
-
+/*
+ * Task definitions
+ */
 void	 parent_shutdown(struct iked *);
 void	 parent_sig_handler(int, short, void *);
 int	 parent_dispatch_ca(int, struct privsep_proc *, struct imsg *);
@@ -150,12 +61,58 @@ int	 parent_dispatch_control(int, struct privsep_proc *, struct imsg *);
 int	 parent_dispatch_ikev2(int, struct privsep_proc *, struct imsg *);
 void	 parent_connected(struct privsep *);
 int	 parent_configure(struct iked *);
-
 static struct privsep_proc procs[] = {
 	{ "ca",		PROC_CERT,	parent_dispatch_ca, caproc, IKED_CA },
 	{ "control",	PROC_CONTROL,	parent_dispatch_control, control },
 	{ "ikev2",	PROC_IKEV2,	parent_dispatch_ikev2, ikev2 }
 };
+
+/*
+ * Closures
+ */
+putsHandler hnd_puts = NULL;
+errorHandler hnd_err = NULL;
+
+/*
+ * Globally shared data
+ */
+OpenIKEDConfig *swift_cf;
+struct swift_bridge_internal swi = {
+	.lock = PTHREAD_MUTEX_INITIALIZER,
+	.console_lock = PTHREAD_MUTEX_INITIALIZER
+};
+struct global_env envLock = {
+	.lock = PTHREAD_MUTEX_INITIALIZER,
+	.owner = 0,
+	.isHeld = false
+};
+
+
+/*
+ * Thread local data
+ */
+__thread struct iked *iked_env = NULL;
+__thread int parent_sock_fileno = -1;
+__thread struct event_base *iked_ev_base = NULL;
+
+/*
+ * Global locks
+ */
+void lockGlobal(void) {
+	pthread_mutex_lock(&swi.lock);
+}
+
+void unlockGlobal(void) {
+	pthread_mutex_unlock(&swi.lock);
+}
+
+void lockConsole(void) {
+	pthread_mutex_lock(&swi.console_lock);
+}
+
+void unlockConsole(void) {
+	pthread_mutex_unlock(&swi.console_lock);
+}
 
 struct iked *
 retainEnv(void)
@@ -163,10 +120,6 @@ retainEnv(void)
 	assert(envLock.isHeld == false || envLock.owner != pthread_self());
 
 	pthread_mutex_lock(&envLock.lock);
-	if (envLock.env == NULL) {
-		pthread_mutex_unlock(&envLock.lock);
-		return NULL;
-	}
 	envLock.isHeld = true;
 	envLock.owner = pthread_self();
 	return envLock.env;
@@ -193,6 +146,7 @@ copyEnv(const char *title)
 
 	if (title == NULL)
 		return NULL;
+
 	proc_id = proc_getid(procs, nitems(procs), title);
 	if (proc_id == PROC_MAX) {
 		swift_error(1, "copyEnv: invalid title");
@@ -201,6 +155,7 @@ copyEnv(const char *title)
 
 	env = retainEnv();
 	if (env == NULL) {
+		releaseEnv();
 		return NULL;
 	}
 
@@ -233,104 +188,240 @@ copyEnv(const char *title)
 	// further initialization will be done by proc_init().
 
 done:
-	// XXX: release partially allocated resources if newEnv is NULL
 	releaseEnv();
 	return newEnv;
 }
 
-/* called from swift */
+/*
+ * Console handling
+ */
 bool
-initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err,
-	 const char *control_sock, const char *conf_file, const char *resource_dir)
+swift_puts(const char *string)
 {
-	struct swift_bridge *bridge = NULL;
+	bool ret;
+
+	lockConsole();
+	if (hnd_puts) {
+		ret = hnd_puts(string);
+	}
+	else {
+		fprintf(stderr, "(swift_puts): %s", string);
+	}
+	unlockConsole();
+	return ret;
+}
+
+void
+swift_error(int num, const char *message)
+{
+	lockConsole();	
+	if (hnd_err) {
+		hnd_err(num, message);
+	}
+	else {
+		fprintf(stderr, "(swift_error): %d: %s", num, message);
+	}
+	unlockConsole();
+	return;
+}
+
+int
+swift_vprintf(const char *fmt, va_list ap)
+{
+	int ret;
+	char *msg = NULL;
+
+	ret = vasprintf(&msg, fmt, ap);
+	if (msg) {
+		swift_puts(msg);
+		free(msg);
+	}
+	return ret;
+}
+
+int
+swift_printf(const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, fmt);
+	ret = swift_vprintf(fmt, ap);
+	va_end(ap);
+
+	return ret;
+}
+
+void
+swift_vlog(int priority, const char *message, va_list ap)
+{
+	(void)swift_vprintf(message, ap);
+}
+
+static char *
+strdup_d(const char *src, const char *def)
+{
+	if (src == NULL) {
+		return (char *)strdup(def);
+	}
+
+	return (char *)strdup(src);	
+}
+
+/*
+ * called from swift. don't forget ARC.
+ */
+bool
+initIKE(const OpenIKEDConfig *cf,
+    putsHandler sw_puts, errorHandler sw_err)
+{
 	struct iked *env = NULL;
 
-	printf("using Control Socket: %s\n", control_sock);
-	printf("using Resource: %s\n", resource_dir);
-	printf("using Configuration: %s\n", conf_file);
-	if (conf_file == NULL) {
-		conf_file = IKED_TEST_CONFIG;
-	}
-	if (envLock.isHeld) {
-		swift_error(1, "initIKE: env lock already held");
+	//
+	//  br is swift object, so it will be released automatically.
+	//  we need to create local copy.
+	//
+	//  NOTE: closures are managed by ARC(-fblocks), those are
+	//        retained carefully. don't use anonymous memcpy(3)
+	//        to ensure ARC.
+	//
+	hnd_puts = Block_copy(sw_puts);
+	hnd_err = Block_copy(sw_err);
+
+	swift_cf = calloc(1, sizeof(*swift_cf));
+	if (swift_cf == NULL) {
+		printf("failed to alloc bridge structure.\n");
 		return false;
 	}
-	pthread_mutex_lock(&envLock.lock);
-	if ((bridge = calloc(1, sizeof(*bridge))) == NULL) {
-		if (hnd_err != NULL)
-			hnd_err(1, "calloc: bridge");
-		return false;
+	if (cf->port == 0) {
+		swift_cf->port = IKED_NATT_PORT;
 	}
-	swift_bridge = bridge;
-	bridge->swift_puts = hnd_puts;
-	bridge->swift_vprintf = hnd_vp;
-	bridge->swift_error = hnd_err;
+	swift_cf->configurationFile =
+		strdup_d(cf->configurationFile, IKED_TEST_CONFIG);
+	swift_cf->controlSocket =
+		strdup_d(cf->controlSocket, IKED_SOCKET);	
+	swift_cf->ikedPrivKey =
+		strdup_d(cf->ikedPrivKey, IKED_PRIVKEY);
+	swift_cf->ikedCADir =
+		strdup_d(cf->ikedCADir, IKED_CA_DIR);
+	swift_cf->ikedCRLDir =
+		strdup_d(cf->ikedCRLDir, IKED_CRL_DIR);
+	swift_cf->ikedCertDir =
+		strdup_d(cf->ikedCertDir, IKED_CERT_DIR);
+	swift_cf->resourcePath =
+		strdup_d(cf->resourcePath, "/");
+
+	swift_cf->debug = cf->debug;
+	swift_cf->verbose = cf->verbose;
+	swift_cf->procInstance = cf->procInstance;
+	swift_cf->opts = cf->opts;
+
+	if (swift_cf->procInstance != 0) {
+		printf("[initIKE] WARNING: multiple instance is not supported yet.");
+	}
+
+	printf("[initIKE] using Configuration: %s\n", swift_cf->configurationFile);
+	printf("[initIKE] using Control Socket: %s\n", swift_cf->controlSocket);
+	printf("[initIKE] using Private Key: %s\n", swift_cf->ikedPrivKey);
+	printf("[initIKE] using CADir: %s\n", swift_cf->ikedCADir);
+	printf("[initIKE] using CRLDir: %s\n", swift_cf->ikedCRLDir);
+	printf("[initIKE] using CertDir: %s\n", swift_cf->ikedCertDir);
+	printf("[initIKE] using App. Bundle Resource: %s\n", swift_cf->resourcePath);	
+
+	//
+	//  logging hack. see log.c.
+	//  will be removed in the future.
+	//
 	log_ext = swift_vlog;
-	
-	if (envLock.env != NULL) {
-		swift_error(1, "initIKE: env already initialized");
-		pthread_mutex_unlock(&envLock.lock);
+
+	//
+	//  create and initialize new environment.
+	//  This environment is a kind of singleton at this time.
+	//  We cannot handle multiple instances at now.
+	//
+	env = retainEnv();
+	if (env != NULL) {
+		swift_error(1, "[initIKE] already initialized.");
+		releaseEnv();
 		goto bailout;
 	}
 	if ((env = calloc(1, sizeof(*env))) == NULL) {
 		swift_error(1, "calloc: ctx");
-		pthread_mutex_unlock(&envLock.lock);
+		releaseEnv();
 		goto bailout;
 	}
 	envLock.env = env;
+	releaseEnv();
 
-	bridge->port = IKED_NATT_PORT;
-	bridge->configurationFile = strdup(conf_file);
-	bridge->controlSocket = strdup(control_sock);
-	bridge->resourcePath = strdup(resource_dir);
-	(void)asprintf(&bridge->ikedPrivKey, "%s/etc/iked/private/local.key", resource_dir);
-	bridge->debug = 2;
-	bridge->verbose = 1;
-	bridge->procInstance = 0;
-	bridge->opts = 0;
-
-	pthread_mutex_unlock(&envLock.lock);
-	swift_puts("iked initialization complete.");
+	swift_puts("[initIKE] iked initialization complete.");
 	return true;
 
 bailout:
-	if (bridge) {
-		if (bridge->controlSocket) {
-			free(bridge->controlSocket);
-		}
-		if (bridge->configurationFile) {
-			free(bridge->configurationFile);
-		}
-		if (bridge->resourcePath) {
-			free(bridge->resourcePath);
-		}
-		free(bridge);
-		swift_bridge = bridge = NULL;
-	}
 	if (env) {
+		retainEnv();
+		if (envLock.env == env) {
+			envLock.env = NULL;
+		}
+		releaseEnv();
 		free(env);
 	}
 
+	deinitIKE();
 	return false;
 }
 
 void
 deinitIKE(void)
 {
-	if (swift_bridge == NULL)
-		return;
+	struct iked *env;
 
-	/* release swift closures. */
-	swift_bridge->swift_puts = NULL;
-	swift_bridge->swift_vprintf = NULL;
-	swift_bridge->swift_error = NULL;
+	if (swift_cf) {
+		// tell ARC to release closures.
+		Block_release(hnd_puts); hnd_puts = NULL;
+		Block_release(hnd_err); hnd_err = NULL;
+		
+		// free manually allocated data.
+		if (swift_cf->configurationFile) {
+			free(swift_cf->configurationFile);
+		}
+		if (swift_cf->controlSocket) {
+			free(swift_cf->controlSocket);
+		}
+		if (swift_cf->ikedPrivKey) {
+			free(swift_cf->ikedPrivKey);
+		}
+		if (swift_cf->ikedCADir) {
+			free(swift_cf->ikedCADir);
+		}
+		if (swift_cf->ikedCRLDir) {
+			free(swift_cf->ikedCRLDir);
+		}
+		if (swift_cf->ikedCertDir) {
+			free(swift_cf->ikedCertDir);
+		}
+		if (swift_cf->resourcePath) {
+			free(swift_cf->resourcePath);
+		}
+		free(swift_cf);
+		swift_cf = NULL;
+	}
+	env = retainEnv();
+	if (env) {
+		free(envLock.env);
+		envLock.env = NULL;
+	}
+	releaseEnv();
+	if (iked_ev_base) {
+		event_base_free(iked_ev_base);
+		iked_ev_base = NULL;
+	}
+	// WARNING: Not all thread local storages are freed here.
 }
 
 bool
 addSymbol(char *definition)
 {
-	if (swift_bridge == NULL)
+	if (swift_cf == NULL)
 		return false;
 	if (cmdline_symset(definition) < 0)
 		return false;
@@ -338,87 +429,85 @@ addSymbol(char *definition)
 	return true;
 }
 
-
 // Parent thread
 void *
 ike_main(void *arg)
 {
 	int			 c;
-	int			 debug = swift_bridge->debug;
-	int			 verbose = swift_bridge->verbose;
-	int			 opts = swift_bridge->opts;
-	enum natt_mode		 natt_mode = NATT_FORCE;
-	in_port_t		 port = swift_bridge->port;
-	const char		*conffile = swift_bridge->configurationFile;
-	const char		*sock = swift_bridge->controlSocket;
-	const char		*errstr, *title = NULL;
+	const char		*errstr;
 	struct privsep		*ps;
 	enum privsep_procid	 proc_id = PROC_PARENT;
-	int			 proc_instance = swift_bridge->procInstance;
 
-	swift_printf("Starting IKEv2 daemon %s (pid: %d)\n", IKED_VERSION, getpid());
+	swift_printf("Starting IKEv2 thread %s (pid: %d)\n", IKED_VERSION, getpid());
 	
-	/* log to stderr until daemonized */
-	log_init(debug ? debug : 1, LOG_DAEMON);
-
-	if (swift_bridge == NULL) {
+	if (swift_cf == NULL) {
 		swift_printf("Error: swift_bridge is NULL\n");
 		return false;
 	}
+
+	/* log to stderr until daemonized */
+	log_init(swift_cf->debug ? swift_cf->debug : 1, LOG_DAEMON);
+
+	/*
+	 *  parent thread uses globally shared environment
+	 *  as its own(thread local) environment.
+	 */
 	iked_env = retainEnv();
 	if (iked_env == NULL) {
 		swift_printf("Error: iked_env is NULL\n");
 		return false;
 	}
-	iked_env->sc_opts = opts;
-	iked_env->sc_nattmode = natt_mode;
-	iked_env->sc_nattport = port;
-
+	iked_env->sc_opts = swift_cf->opts;
+	iked_env->sc_nattmode = NATT_FORCE;
+	iked_env->sc_nattport = swift_cf->port;
+	iked_env->sc_path.privkey_file = swift_cf->ikedPrivKey;
+	iked_env->sc_path.ca_dir = swift_cf->ikedCADir;
+	iked_env->sc_path.crl_dir = swift_cf->ikedCRLDir;
+	iked_env->sc_path.cert_dir = swift_cf->ikedCertDir;
+	
 	ps = &iked_env->sc_ps;
 	ps->ps_env = iked_env;
 
-	if (strlcpy(iked_env->sc_conffile, conffile, PATH_MAX) >= PATH_MAX)
+	if (strlcpy(iked_env->sc_conffile, swift_cf->configurationFile,
+	     PATH_MAX) >= PATH_MAX) {
 		errx(1, "config file exceeds PATH_MAX");
+	}
 
+	/*
+	 * Configure modules
+	 * XXX: OK for other threads?
+	 */
 	ca_sslinit();
 	group_init();
 	policy_init(iked_env);
 
-#if 0
-	if ((ps->ps_pw =  getpwnam(IKED_USER)) == NULL)
-		errx(1, "unknown user %s", IKED_USER);
-#endif	
+	ps->ps_csock.cs_name = swift_cf->controlSocket;
 
-	/* Configure the control socket */
-	ps->ps_csock.cs_name = sock;
+	log_init(swift_cf->debug, LOG_DAEMON);
+	log_setverbose(swift_cf->verbose);
 
-	log_init(debug, LOG_DAEMON);
-	log_setverbose(verbose);
-
-	if (opts & IKED_OPT_NOACTION)
+	if (swift_cf->opts & IKED_OPT_NOACTION)
 		ps->ps_noaction = 1;
 
-	ps->ps_instance = proc_instance;
-	if (title != NULL)
-		ps->ps_title[proc_id] = title;
+	ps->ps_instance = swift_cf->procInstance;
+	ps->ps_title[proc_id] = NULL;
 	releaseEnv();
 
-	/* only the parent returns */
-	swift_printf("Starting worker threads...\n");
-	proc_init(ps, procs, nitems(procs), debug, 0, NULL, proc_id);
-
-	swift_printf("setproctitle...\n");
+	/*
+	 * Environment setup is completed.
+	 * Initialize workers now.
+	 */
+	swift_printf("[parent] Starting worker threads...\n");
+	proc_init(ps, procs, nitems(procs), swift_cf->debug, 0, NULL, proc_id);
 	setproctitle("parent");
 	log_procinit("parent");
 
-	swift_printf("event_init...\n");
 	iked_ev_base = event_base_new();
 	if (iked_ev_base == NULL) {
-		swift_printf("failed to initialize event base.\n");
+		swift_printf("[parent] failed to initialize event base.\n");
 		return NULL;
 	}
 
-	swift_printf("set signal handlers...\n");
 	ps->ps_evsigint = evsignal_new(iked_ev_base, SIGINT, parent_sig_handler, ps);
 	ps->ps_evsigterm = evsignal_new(iked_ev_base, SIGTERM, parent_sig_handler, ps);
 	ps->ps_evsigchld = evsignal_new(iked_ev_base, SIGCHLD, parent_sig_handler, ps);
@@ -437,14 +526,14 @@ ike_main(void *arg)
 	vroute_init(iked_env);
 #endif
 
-	swift_printf("proc_connect...\n");
+	swift_printf("[parent] proc_connect...\n");
 	proc_connect(ps, parent_connected);
 
-	swift_printf("dispatching events...\n");
+	swift_printf("[parent] dispatching events...\n");
 	event_base_dispatch(iked_ev_base);
 
-	swift_printf("exiting...\n");
-	log_debug("%d parent exiting", getpid());
+	swift_printf("[parent] exiting...\n");
+	log_debug("[parent] %d parent exiting", getpid());
 	parent_shutdown(iked_env);
 	event_free(ps->ps_evsigint); ps->ps_evsigint = NULL;
 	event_free(ps->ps_evsigterm); ps->ps_evsigterm = NULL;

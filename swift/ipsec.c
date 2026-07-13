@@ -22,7 +22,7 @@
 #include <event.h>
 
 #include "iked.h"
-#include "swift_bridge.h"
+#include "swift_bridge_internal.h"
 
 int
 ipsec_couple(struct iked *env, struct iked_sas *sas, int couple)

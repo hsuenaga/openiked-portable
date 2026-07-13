@@ -3,12 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
-#include <pthread.h>
 
-#ifdef PROC_PARENT_SOCK_FILENO
-#undef PROC_PARENT_SOCK_FILENO
-#endif
-#define PROC_PARENT_SOCK_FILENO parent_sock_fileno
 
 /*
  * closure:
@@ -18,54 +13,28 @@ typedef bool (^putsHandler)(const char * string);
 
 /*
  * closure:
- * { (_ fmt: UnsafePointer<CChar>?, _ va: CVaListPointer?) -> CInt in ... }
- */
-typedef int (^vprintfHandler)(const char * fmt, va_list ap);
-
-/*
- * closure:
  * { (_ num: CInt,  UnsafePointer<CChar>?) -> Void in ... }
  */
 typedef void (^errorHandler)(int num, const char * string);
 
-struct swift_bridge {
-	pthread_mutex_t lock;
-
-	putsHandler swift_puts;
-	vprintfHandler swift_vprintf;
-	errorHandler swift_error;
-
+typedef struct {
 	/* configuration */
-	uint16_t	port;
-	char*		configurationFile;
-	char*		controlSocket;
-	char*   	resourcePath;
-	char*   	ikedPrivKey;
-	char*		ikedCADir;
-	char*		ikedCRLDir;
-	char*		ikedCertDir;
-	int		debug;
-	int		verbose;
-	int		procInstance;
-	int		opts;
-};
-
-extern struct swift_bridge *swift_bridge;
-extern __thread int parent_sock_fileno;
-extern __thread struct event_base *iked_ev_base;
-
-
-/* Internal API. no need to call from Swift? */
-struct iked *retainEnv(void);
-void releaseEnv(void);
-struct iked *copyEnv(const char *title);
-bool swift_puts(const char *string);
-int swift_vprintf(const char *fmt, va_list ap);
-int swift_printf(const char *fmt, ...);
-void swift_error(int num, const char *message);
+	uint16_t	 port;
+	char		*configurationFile;
+	char		*controlSocket;
+	char   		*ikedPrivKey;
+	char		*ikedCADir;
+	char		*ikedCRLDir;
+	char		*ikedCertDir;
+	char   		*resourcePath;
+	int		 debug;
+	int		 verbose;
+	int		 procInstance;
+	int		 opts;
+} OpenIKEDConfig;
 
 /* Swift API */
-bool initIKE(vprintfHandler hnd_vp, putsHandler hnd_puts, errorHandler hnd_err, const char *control_sock, const char *conf_file, const char *resource_dir);
+bool initIKE(const OpenIKEDConfig *, putsHandler, errorHandler);
 void deinitIKE(void);
 bool startIKE(void);
 

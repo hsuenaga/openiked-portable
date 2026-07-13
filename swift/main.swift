@@ -7,40 +7,27 @@ import Dispatch
  *
  * ... but manually retained closure sometime helps our debug.
  */
-let swiftPuts = { (_ string: UnsafePointer<CChar>?) -> CBool in
-    guard let string else {
-        return false
+let swiftPuts : @convention(block) (UnsafePointer<CChar>?) -> CBool = { str in
+    guard let str else {
+        return false;
     }
-    let msg = String(cString:string)
+    let msg = String(cString:str).trimmingCharacters(in: .newlines)
     DispatchQueue.main.async {
-        print("swiftPuts: \(msg)")
+        print("[swiftPuts]: \(msg)")
     }
     return true
 }
 
-let swiftVprintf = { (_ string: UnsafePointer<CChar>?, _ va: CVaListPointer?) -> CInt in
-    guard let string, let va else {
-        return -1
-    }
-    let fmt = String(cString: string)
-    let message = NSString(format: fmt, arguments: va) as String
-    DispatchQueue.main.async {
-        print("swiftVprintf: \(message)")
-    }
-    return CInt(message.count)
-}
-
-let swiftError = { (_ num: CInt, _ string: UnsafePointer<CChar>?) -> Void in
-    guard let string else {
+let swiftError : @convention(block) (CInt, UnsafePointer<CChar>?) -> Void = { num, str in
+    guard let str else {
         return
     }
-    let message = String(cString: string)
+    let message = String(cString: str).trimmingCharacters(in: .newlines)
     DispatchQueue.main.async {
-        print("swiftError: \(num): \(message)")
+        print("[swiftError]: \(num): \(message)")
     }
     return
 }
-
 
 guard let resourcePath = Bundle.main.resourcePath else {
     print("No resource directory.")
@@ -75,7 +62,11 @@ let ctrlSock = "\(tmpDirectoryURL.path)/iked.sock"
 let configFile = "\(resourcePath)/etc/iked/iked.conf"
 
 print("Initializing IKE with Swift bridge...")
-initIKE(swiftVprintf, swiftPuts, swiftError, ctrlSock, configFile, resourcePath)
+var ikedConfig = OpenIKEDConfig()
+withUnsafePointer(to: &ikedConfig) { ptr in
+    initIKE(ptr, swiftPuts, swiftError)
+}
+
 print("Starting IKE...")
 startIKE();
 print("IKE started. Waiting for events...")
