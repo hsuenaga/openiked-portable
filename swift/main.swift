@@ -75,7 +75,7 @@ startIKE();
 print("IKE started. Waiting for events...")
 
 let timer = DispatchSource.makeTimerSource(queue: .main)
-timer.schedule(deadline: .now(), repeating: .seconds(1))
+timer.schedule(deadline: .now(), repeating: .seconds(10))
 timer.setEventHandler {
     if (tear_down) {
         print("SIGINT received.(\(getpid())).");
