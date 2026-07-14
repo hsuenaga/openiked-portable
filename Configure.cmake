@@ -27,6 +27,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "iOS")
 		HAVE_SOCKADDR_SA_LEN
 		NO_KERNEL_ESP
 		BROKEN_DEAD
+		__APPLE_USE_RFC_3542
 	)
 	if(THREAD)
 		add_compile_definitions(
@@ -47,6 +48,7 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
 		HAVE_SOCKADDR_SA_LEN
 		NO_KERNEL_ESP
 		BROKEN_DEAD
+		__APPLE_USE_RFC_3542
 	)
 	if (HOMEBREW AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
 		include_directories("/opt/homebrew/include")

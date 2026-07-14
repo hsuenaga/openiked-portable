@@ -16,7 +16,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-
+#define __APPLE_USE_RFC_3542
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
@@ -379,7 +379,7 @@ sendtofrom(int s, void *buf, size_t len, int flags, struct sockaddr *to,
 
 	switch (to->sa_family) {
 	case AF_INET:
-#ifdef IP_SENDSRCADDR
+#if defined(IP_SENDSRCADDR) && !defined(__APPLE__)
 		in = (struct sockaddr_in *)from;
 		if (in->sin_addr.s_addr == INADDR_ANY)
 			break;
@@ -393,7 +393,7 @@ sendtofrom(int s, void *buf, size_t len, int flags, struct sockaddr *to,
 #endif
 		break;
 	case AF_INET6:
-#ifdef IPV6_PKTINFO
+#if defined(IPV6_PKTINFO) && !defined(__APPLE__)
 		msg.msg_control = &cmsgbuf;
 		msg.msg_controllen += sizeof(cmsgbuf.in6buf);
 		cmsg = CMSG_FIRSTHDR(&msg);
