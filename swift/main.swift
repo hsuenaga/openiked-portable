@@ -37,10 +37,6 @@ guard let resourcePath = Bundle.main.resourcePath else {
     exit(1)
 }
 let tmpDirectoryURL = FileManager.default.temporaryDirectory
-//print("tmp: \(tmpDirectoryURL)")
-//print("resource: \(resourcePath)")
-let ctrlSock = "\(tmpDirectoryURL.path)/iked.sock"
-let configFile = "\(resourcePath)/etc/iked/iked.conf"
 
 print("Initializing IKE with Swift bridge...")
 var ikedConfig = OpenIKEDConfig()
