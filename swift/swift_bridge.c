@@ -201,6 +201,7 @@ copyEnv(const char *title)
 	ps->ps_noaction = env->sc_ps.ps_noaction;
 	ps->ps_instance = proc_instance;
 	ps->ps_title[proc_id] = title;
+	policy_init(newEnv);
 	// further initialization will be done by proc_init().
 
 done:
@@ -312,7 +313,7 @@ detach_thread(void*(func(void *)), void *arg)
 	    (void *)tl->tid, tl->idx);
 	r = tl->idx;
 	pthread_mutex_unlock(&iked_threads_lock);
-	
+
 	return r;
 }
 
