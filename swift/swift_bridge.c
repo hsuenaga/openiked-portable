@@ -684,13 +684,10 @@ ike_main(void *arg)
 	vroute_init(iked_env);
 #endif
 
-	swift_printf("[parent] proc_connect...\n");
 	proc_connect(ps, parent_connected);
 
-	swift_printf("[parent] dispatching events...\n");
 	event_base_dispatch(iked_ev_base);
 
-	swift_printf("[parent] exiting...\n");
 	log_debug("[parent] pid %d, tidx %d, parent exiting", getpid(), gettidx());
 	event_free(ps->ps_evsigint); ps->ps_evsigint = NULL;
 	event_free(ps->ps_evsigterm); ps->ps_evsigterm = NULL;
@@ -699,7 +696,6 @@ ike_main(void *arg)
 	event_free(ps->ps_evsigpipe); ps->ps_evsigpipe = NULL;
 	event_free(ps->ps_evsigusr1); ps->ps_evsigusr1 = NULL;
 
-//	parent_shutdown(iked_env);
 	event_base_free(iked_ev_base);
 	iked_ev_base = NULL;
 
@@ -709,7 +705,7 @@ ike_main(void *arg)
 	envLock.env = iked_env = NULL;	
 	releaseEnv();
 
-	swift_printf("[parent] waiting child threads.");
+	swift_printf("[parent] join all worker threads...");
 	join_all_threads();
 	swift_printf("[parent] Finished");
 

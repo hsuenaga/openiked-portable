@@ -85,7 +85,7 @@ timer.setEventHandler {
 
         exit(0);
     }
-    print("tick")
+    print("Tick. UI thread is still alive!")
 }
 timer.resume()
 dispatchMain()

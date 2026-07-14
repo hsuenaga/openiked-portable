@@ -85,17 +85,13 @@ thread_main(void *arg0)
 	int parent_fd = arg->parent_fd;
 	free(arg0); arg = arg0 = NULL;
 
-	swift_printf("Thread(%d): start %s, pid %ld\n",
-	    gettidx(), title, (long)getpid());
-
 	// Initialize TLS
 	initTLS();
 	iked_env = copyEnv(title);
 	ps = &iked_env->sc_ps;
 
-	// Setup FD
+	// Setup fd. this is TLS.
 	PROC_PARENT_SOCK_FILENO = parent_fd;
-	swift_printf("Thread(%d): parent socket=%d", gettidx(), PROC_PARENT_SOCK_FILENO);
 
 	// Initialize context
 	proc_id = proc_getid(procs, nproc, title);
