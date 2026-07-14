@@ -16,7 +16,9 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+#if defined(__APPLE__) && !defined(__APPLE_USE_RFC_3542)
 #define __APPLE_USE_RFC_3542
+#endif
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
@@ -350,7 +352,7 @@ sendtofrom(int s, void *buf, size_t len, int flags, struct sockaddr *to,
 {
 	struct iovec		 iov;
 	struct msghdr		 msg;
-#if defined(IP_SENDSRCADDR) || defined(IPV6_PKTINFO)
+#if !defined(__APPLE__) && (defined(IP_SENDSRCADDR) || defined(IPV6_PKTINFO))
 	struct cmsghdr		*cmsg;
 #ifdef IP_SENDSRCADDR
 	struct sockaddr_in	*in;
