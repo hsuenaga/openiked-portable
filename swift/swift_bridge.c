@@ -450,9 +450,7 @@ initIKE(const OpenIKEDConfig *cf,
 		printf("failed to alloc bridge structure.\n");
 		return false;
 	}
-	if (cf->port == 0) {
-		swift_cf->port = IKED_NATT_PORT;
-	}
+	swift_cf->port = cf->port != 0 ? cf->port : IKED_NATT_PORT;
 	swift_cf->configurationFile =
 		strdup_d(cf->configurationFile, IKED_CONFIG);
 	swift_cf->controlSocket =
