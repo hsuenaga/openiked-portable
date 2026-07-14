@@ -16,10 +16,6 @@ if (APPLE)
 	add_compile_definitions(SANDBOX)
 endif()
 
-add_compile_definitions(
-	IKED_TEST_CONFIG="${CMAKE_SOURCE_DIR}/iked.conf"
-)
-
 if (CMAKE_SYSTEM_NAME MATCHES "iOS")
 	if (NOT DEFINED CMAKE_INSTALL_SYSCONFDIR)
 		set (CMAKE_INSTALL_SYSCONFDIR ${CMAKE_INSTALL_PREFIX}/etc)

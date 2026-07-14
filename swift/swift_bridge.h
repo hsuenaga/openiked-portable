@@ -37,7 +37,7 @@ typedef struct {
 bool initIKE(const OpenIKEDConfig *, putsHandler, errorHandler);
 void deinitIKE(void);
 bool startIKE(void);
-
+void stopIKE(void);
 bool addSymbol(char *);
 
 #endif /* __SWIFT_BRIDGE_H__ */

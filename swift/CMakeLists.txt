@@ -41,9 +41,9 @@ set_source_files_properties(${OPENIKED_RESOURCES} PROPERTIES
 )
 add_executable(openiked
 	main.swift
+	bridge.h
 	swift_bridge.c
 	swift_bridge.h
-	bridge.h
 	${OPENIKED_RESOURCES}
 )
 target_link_directories(openiked PRIVATE
@@ -61,14 +61,15 @@ target_link_libraries(openiked PRIVATE
 	iked-shared
 	compat-static
 	swiftike
+	event_pthreads
 )
 set_target_properties(openiked PROPERTIES
         XCODE_ATTRIBUTE_SWIFT_OBJC_BRIDGING_HEADER "${BRIDGING_HEADER_PATH}"
 	MACOSX_BUNDLE TRUE
 	MACOSX_BUNDLE_GUI_IDENTIFIER "jp.ad.iij.iedgesase"
 	MACOSX_BUNDLE_BUNDLE_NAME "openiked"
-	MAXOSX_BUNDLE_BUNDLE_VERSION "1.0.0"
-	MAXOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+	MACOSX_BUNDLE_BUNDLE_VERSION "1.0.0"
+	MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
 )
 if(NOT XCODE)
 #https://github.com/Kitware/CMake/blob/master/Tests/SwiftMix/CMakeLists.txt

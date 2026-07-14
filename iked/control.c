@@ -207,8 +207,10 @@ control_accept(int listenfd, short event, void *arg)
 		if (errno == ENFILE || errno == EMFILE) {
 			struct timeval evtpause = { 1, 0 };
 #ifdef THREAD
-			event_del(cs->cs_ev);
-			evtimer_add(cs->cs_evt, &evtpause);
+			if (cs->cs_ev)
+				event_del(cs->cs_ev);
+			if (cs->cs_evt)
+				evtimer_add(cs->cs_evt, &evtpause);
 #else
 			event_del(&cs->cs_ev);
 			evtimer_add(&cs->cs_evt, &evtpause);
@@ -283,7 +285,8 @@ control_close(int fd, struct control_sock *cs)
 	TAILQ_REMOVE(&ctl_conns, c, entry);
 
 #ifdef THREAD
-	event_del(c->iev.ev);
+	if (c->iev.ev)
+		event_del(c->iev.ev);
 #else
 	event_del(&c->iev.ev);
 #endif
@@ -291,9 +294,10 @@ control_close(int fd, struct control_sock *cs)
 
 	/* Some file descriptors are available again. */
 #ifdef THREAD
-	if (evtimer_pending(cs->cs_evt, NULL)) {
+	if (cs->cs_evt && evtimer_pending(cs->cs_evt, NULL)) {
 		evtimer_del(cs->cs_evt);
-		event_add(cs->cs_ev, NULL);
+		if (cs->cs_ev)
+			event_add(cs->cs_ev, NULL);
 	}
 #else
 	if (evtimer_pending(&cs->cs_evt, NULL)) {

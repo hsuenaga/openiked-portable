@@ -157,7 +157,7 @@ ocsp_connect(struct iked *env, struct imsg *imsg)
 
 	log_debug("%s: connect(%s, %s)", __func__, host, port);
 	if (connect(fd, res->ai_addr, res->ai_addrlen) == -1) {
-		/* register callback for ansync connect */
+		/* register callback for async connect */
 		if (errno == EINPROGRESS) {
 			tv.tv_sec = OCSP_TIMEOUT;
 			tv.tv_usec = 0;
@@ -270,7 +270,7 @@ ocsp_connect_finish(struct iked *env, int fd, struct ocsp_connect *oc)
 
 /* unpriv */
 
-/* validate the certifcate stored in 'data' by querying the ocsp-responder */
+/* validate the certificate stored in 'data' by querying the ocsp-responder */
 int
 ocsp_validate_cert(struct iked *env, void *data, size_t len,
     struct iked_sahdr sh, uint8_t type, X509 *issuer)

@@ -53,6 +53,23 @@ ikedConfig.ikedCRLDir = strdup("\(resourcePath)/etc/iked/crls/")
 ikedConfig.ikedCertDir = strdup("\(resourcePath)/etc/iked/certs/")
 ikedConfig.resourcePath = strdup("\(resourcePath)")
 
+//
+// signal handler
+//
+var tear_down = false;
+signal(SIGINT, SIG_IGN);
+let signalSource: any DispatchSourceSignal = DispatchSource.makeSignalSource(
+    signal: SIGINT,
+    queue: DispatchQueue.global()
+)
+signalSource.setEventHandler {
+    tear_down = true
+}
+signalSource.resume()
+
+//
+// Initialize OpenIKED instance.
+//
 _ = withUnsafePointer(to: &ikedConfig) { ptr in
     initIKE(ptr, swiftPuts, swiftError)
 }
@@ -64,6 +81,14 @@ print("IKE started. Waiting for events...")
 let timer = DispatchSource.makeTimerSource(queue: .main)
 timer.schedule(deadline: .now(), repeating: .seconds(1))
 timer.setEventHandler {
+    if (tear_down) {
+        print("SIGINT received.(\(getpid())).");
+        print("Waiting for IKE Threads will be finished...")
+        stopIKE();
+        print("OK. IKE Threads are joined. exiting.")
+
+        exit(0);
+    }
     print("tick")
 }
 timer.resume()

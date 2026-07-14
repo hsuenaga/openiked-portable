@@ -18,6 +18,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/fcntl.h>
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
@@ -76,7 +77,6 @@ thread_main(void *arg0)
 	if (arg == NULL)
 		fatalx("%s: missing thread argument", __func__);
 
-
 	// Extract arg
 	struct privsep_proc *procs = arg->procs;
 	unsigned int nproc = arg->nproc;
@@ -85,14 +85,17 @@ thread_main(void *arg0)
 	int parent_fd = arg->parent_fd;
 	free(arg0); arg = arg0 = NULL;
 
-	swift_printf("thread_main: %s, pid %d\n", title, getpid());
+	swift_printf("Thread(%d): start %s, pid %ld\n",
+	    gettidx(), title, (long)getpid());
 
 	// Initialize TLS
+	initTLS();
 	iked_env = copyEnv(title);
 	ps = &iked_env->sc_ps;
 
 	// Setup FD
 	PROC_PARENT_SOCK_FILENO = parent_fd;
+	swift_printf("Thread(%d): parent socket=%d", gettidx(), PROC_PARENT_SOCK_FILENO);
 
 	// Initialize context
 	proc_id = proc_getid(procs, nproc, title);
@@ -110,9 +113,12 @@ thread_main(void *arg0)
 		    __func__, privsep_process);
 	p->p_init(ps, p);
 
-	fatalx("failed to initiate child process");
+	free(iked_env);
+	iked_env = NULL;
 
-	return NULL; // not reached.
+	swift_printf("Thread(%d) Finished.", gettidx());
+
+	return NULL;
 }
 
 
@@ -143,6 +149,7 @@ proc_exec(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc)
 	for (unsigned int proc = 0; proc < nproc; proc++) {
 		struct thread_arg *arg = calloc(1, sizeof(*arg));
 		struct privsep_proc	*p = NULL;
+		int tidx;
 
 		if (arg == NULL)
 			fatal("%s: calloc", __func__);
@@ -154,7 +161,7 @@ proc_exec(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc)
 		arg->title = p->p_title;
 		arg->instance_id = instance_id;
 		arg->parent_fd = ps->ps_pipes[p->p_id][instance_id].pp_pipes[PROC_PARENT][0];
-		pthread_create(&tid, NULL, thread_main, (void *)arg);		
+		detach_thread(thread_main, arg);
 	}
 }
 
@@ -184,10 +191,15 @@ proc_connect(struct privsep *ps, void (*connected)(struct privsep *))
 			    ps->ps_pp->pp_pipes[dst][inst]) == -1)
 				fatal("%s: imsgbuf_init", __func__);
 			imsgbuf_allow_fdpass(&iev->ibuf);
+			if (iev->ev) {
+				event_del(iev->ev);
+				event_free(iev->ev);
+			}
 			iev->ev = event_new(iked_ev_base, iev->ibuf.fd, iev->events,
 				iev->handler, iev->data);
-			// XXX: free() this somewhere...
-			event_add(iev->ev, NULL);
+			if (iev->ev) {
+				event_add(iev->ev, NULL);
+			}
 		}
 	}
 
@@ -273,6 +285,7 @@ proc_init(struct privsep *ps, struct privsep_proc *procs, unsigned int nproc,
 
 				pa->pp_pipes[dst][proc] = fds[0];
 				pb->pp_pipes[PROC_PARENT][0] = fds[1];
+				swift_printf("IPC Channel: %d <-> %d", fds[0], fds[1]);
 			}
 		}
 
@@ -315,9 +328,14 @@ proc_accept(struct privsep *ps, int fd, enum privsep_procid dst,
 	if (imsgbuf_init(&iev->ibuf, fd) == -1)
 		fatal("%s: imsgbuf_init", __func__);
 	imsgbuf_allow_fdpass(&iev->ibuf);
+	if (iev->ev) {
+		event_del(iev->ev);
+		event_free(iev->ev);
+	}
 	iev->ev = event_new(iked_ev_base, iev->ibuf.fd, iev->events, iev->handler, iev->data);
-	event_add(iev->ev, NULL);
-	// XXX: free this somewhere..
+	if (iev->ev) {
+		event_add(iev->ev, NULL);
+	}
 }
 
 void
@@ -404,32 +422,7 @@ proc_kill(struct privsep *ps)
 		return;
 
 	proc_close(ps);
-
-	// XXX: pthread_join() & pthread_wait() manner
-	do {
-		pid = waitpid(WAIT_ANY, &status, 0);
-		if (pid <= 0)
-			continue;
-
-		if (WIFSIGNALED(status)) {
-			len = asprintf(&cause, "terminated; signal %d",
-			    WTERMSIG(status));
-		} else if (WIFEXITED(status)) {
-			if (WEXITSTATUS(status) != 0)
-				len = asprintf(&cause, "exited abnormally");
-			else
-				len = 0;
-		} else
-			len = -1;
-
-		if (len == 0) {
-			/* child exited OK, don't print a warning message */
-		} else if (len != -1) {
-			log_warnx("lost child: pid %u %s", pid, cause);
-			free(cause);
-		} else
-			log_warnx("lost child: pid %u", pid);
-	} while (pid != -1 || (pid == -1 && errno == EINTR));
+	join_all_threads();
 }
 
 void
@@ -454,6 +447,10 @@ proc_open(struct privsep *ps, int src, int dst)
 			    SOCK_STREAM,
 			    PF_UNSPEC, fds) == -1)
 				fatal("%s: socketpair", __func__);
+			(void)fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+			(void)fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+			(void)fcntl(fds[0], F_SETFL, O_NONBLOCK);
+			(void)fcntl(fds[1], F_SETFL, O_NONBLOCK);
 #else
 			if (socketpair(AF_UNIX,
 			    SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
@@ -507,15 +504,20 @@ proc_close(struct privsep *ps)
 				continue;
 
 			/* Cancel the fd, close and invalidate the fd */
-			event_del(ps->ps_ievs[dst][n].ev);
-			event_free(ps->ps_ievs[dst][n].ev);
-			ps->ps_ievs[dst][n].ev = NULL;
+			if (ps->ps_ievs[dst][n].ev) {
+				event_del(ps->ps_ievs[dst][n].ev);
+				event_free(ps->ps_ievs[dst][n].ev);
+				ps->ps_ievs[dst][n].ev = NULL;
+			}
 			imsgbuf_clear(&(ps->ps_ievs[dst][n].ibuf));
 			close(pp->pp_pipes[dst][n]);
 			pp->pp_pipes[dst][n] = -1;
 		}
 		free(ps->ps_ievs[dst]);
+		ps->ps_ievs[dst] = NULL;
 	}
+
+	event_base_loopexit(iked_ev_base, NULL);
 }
 
 void
@@ -523,14 +525,12 @@ proc_shutdown(struct privsep_proc *p)
 {
 	struct privsep	*ps = p->p_ps;
 
+	tear_down = true;
+
 	if (p->p_shutdown != NULL)
 		(*p->p_shutdown)();
 
 	proc_close(ps);
-
-	log_info("%s exiting, pid %d", p->p_title, getpid());
-
-	exit(0);
 }
 
 void
@@ -574,27 +574,15 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 
 	iked_ev_base = event_base_new();
 
-	ps->ps_evsigint = evsignal_new(iked_ev_base,  SIGINT, proc_sig_handler, p);
-	ps->ps_evsigterm = evsignal_new(iked_ev_base, SIGTERM, proc_sig_handler, p);
-	ps->ps_evsigchld = evsignal_new(iked_ev_base, SIGCHLD, proc_sig_handler, p);
-	ps->ps_evsighup = evsignal_new(iked_ev_base, SIGHUP, proc_sig_handler, p);
-	ps->ps_evsigpipe = evsignal_new(iked_ev_base, SIGPIPE, proc_sig_handler, p);
-	ps->ps_evsigusr1 = evsignal_new(iked_ev_base, SIGUSR1, proc_sig_handler, p);
-
-	signal_add(ps->ps_evsigint, NULL);
-	signal_add(ps->ps_evsigterm, NULL);
-	signal_add(ps->ps_evsigchld, NULL);
-	signal_add(ps->ps_evsighup, NULL);
-	signal_add(ps->ps_evsigpipe, NULL);
-	signal_add(ps->ps_evsigusr1, NULL);
-
+	//
+	//  Signals are BLOCKED.
+	//
 	proc_setup(ps, procs, nproc);
 	proc_accept(ps, PROC_PARENT_SOCK_FILENO, PROC_PARENT, 0);
 	if (p->p_id == PROC_CONTROL && ps->ps_instance == 0) {
 		if (control_listen(&ps->ps_csock) == -1)
 			fatalx("%s: control_listen", __func__);
 	}
-
 #if DEBUG
 	log_debug("%s: %s %d/%d, pid %d", __func__, p->p_title,
 	    ps->ps_instance + 1, ps->ps_instances[p->p_id], getpid());
@@ -602,19 +590,11 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 
 	if (run != NULL)
 		run(ps, p, arg);
-
+	
+	swift_printf("Thread(%d) Listen %d.", gettidx(), PROC_PARENT_SOCK_FILENO);
 	event_base_dispatch(iked_ev_base);
-
-	event_free(ps->ps_evsigint); ps->ps_evsigint = NULL;
-	event_free(ps->ps_evsigterm); ps->ps_evsigterm = NULL;
-	event_free(ps->ps_evsigchld); ps->ps_evsigchld = NULL;
-	event_free(ps->ps_evsighup); ps->ps_evsighup = NULL;
-	event_free(ps->ps_evsigpipe); ps->ps_evsigpipe = NULL;
-	event_free(ps->ps_evsigusr1); ps->ps_evsigusr1 = NULL;
 	event_base_free(iked_ev_base);
 	iked_ev_base = NULL;
-
-	proc_shutdown(p);
 }
 
 void
@@ -638,9 +618,12 @@ proc_dispatch(int fd, short event, void *arg)
 			fatal("%s: imsgbuf_read", __func__);
 		if (n == 0) {
 			/* this pipe is dead, so remove the event handler */
-			event_del(iev->ev);
-			event_free(iev->ev);
-			event_loopexit(NULL);
+			if (iev->ev) {
+				event_del(iev->ev);
+				event_free(iev->ev);
+				iev->ev = NULL;
+			}
+			proc_shutdown(p);
 			return;
 		}
 	}
@@ -648,9 +631,12 @@ proc_dispatch(int fd, short event, void *arg)
 	if (event & EV_WRITE) {
 		if (imsgbuf_write(ibuf) == -1) {
 			if (errno == EPIPE) {	/* Connection closed. */
-				event_del(iev->ev);
-				event_free(iev->ev);
-				event_loopexit(NULL);
+				if (iev->ev) {
+					event_del(iev->ev);
+					event_free(iev->ev);
+					iev->ev = NULL;
+				}
+				proc_shutdown(p);
 				return;
 			} else
 				fatal("imsgbuf_write");
@@ -754,9 +740,14 @@ imsg_event_add(struct imsgev *iev)
 	if (imsgbuf_queuelen(&iev->ibuf) > 0)
 		iev->events |= EV_WRITE;
 
-	event_del(iev->ev);
-	event_assign(iev->ev, iked_ev_base, iev->ibuf.fd, iev->events, iev->handler, iev->data);
-	event_add(iev->ev, NULL);
+	if (iev->ev) {
+		event_del(iev->ev);
+		event_free(iev->ev);
+	}
+	iev->ev = event_new(iked_ev_base, iev->ibuf.fd, iev->events, iev->handler, iev->data);
+	if (iev->ev) {
+		event_add(iev->ev, NULL);
+	}
 }
 
 int

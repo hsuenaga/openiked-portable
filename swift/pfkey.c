@@ -1237,7 +1237,9 @@ pfkey_write(struct iked *env, struct sadb_msg *smsg, struct iovec *iov, int iov_
 	}
 
 	/* Delete event to poll() in pfkey_reply() */
-	event_del(env->sc_pfkeyev);
+	if (env->sc_pfkeyev) {
+		event_del(env->sc_pfkeyev);
+	}
 
 	if ((n = writev(env->sc_pfkey, iov, iov_cnt)) == -1) {
 		log_warn("%s: writev failed: type %u len %zd",
@@ -1250,7 +1252,9 @@ pfkey_write(struct iked *env, struct sadb_msg *smsg, struct iovec *iov, int iov_
 
 	ret = pfkey_reply(env->sc_pfkey, datap, lenp);
  done:
-	event_add(env->sc_pfkeyev, NULL);
+	if (env->sc_pfkeyev) {
+		event_add(env->sc_pfkeyev, NULL);
+	}
 	return (ret);
 }
 
@@ -1603,7 +1607,9 @@ pfkey_init(struct iked *env, int fd)
 	}
 	env->sc_pfkeyev =event_new(iked_ev_base, env->sc_pfkey,
 	    EV_READ|EV_PERSIST, pfkey_dispatch, env);
-	event_add(env->sc_pfkeyev, NULL);
+	if (env->sc_pfkeyev) {
+		event_add(env->sc_pfkeyev, NULL);
+	}
 
 	pfkey_flush(env);
 

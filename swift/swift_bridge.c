@@ -38,6 +38,7 @@
 #include <err.h>
 #include <pwd.h>
 #include <event.h>
+#include <event2/thread.h>
 #include <pthread.h>
 #include <assert.h>
 
@@ -67,6 +68,14 @@ static struct privsep_proc procs[] = {
 };
 
 /*
+ * Thread management.
+ */
+struct iked_thread_hd iked_threads = LIST_HEAD_INITIALIZER(iked_thread_hd);
+pthread_mutex_t iked_threads_lock = PTHREAD_MUTEX_INITIALIZER;
+static int iked_thread_idx = 0;
+static int iked_parent_idx = -1;
+
+/*
  * Closures
  */
 putsHandler hnd_puts = NULL;
@@ -86,13 +95,21 @@ struct global_env envLock = {
 	.isHeld = false
 };
 
-
 /*
- * Thread local data
+ * Instance of TLS
  */
 __thread struct iked *iked_env = NULL;
 __thread int parent_sock_fileno = -1;
 __thread struct event_base *iked_ev_base = NULL;
+__thread bool tear_down = false;
+
+void
+initTLS(void) {
+	iked_env = NULL;
+	parent_sock_fileno = -1;
+	iked_ev_base = NULL;
+	tear_down = false;
+}
 
 /*
  * Global locks
@@ -267,6 +284,141 @@ strdup_d(const char *src, const char *def)
 	return (char *)strdup(src);	
 }
 
+int
+detach_thread(void*(func(void *)), void *arg)
+{
+	struct iked_thread_list *tl;
+	int r;
+
+	tl = calloc(1, sizeof(*tl));
+	if (tl == NULL) {
+		return -1;
+	}
+
+	pthread_mutex_lock(&iked_threads_lock);
+	tl->idx = iked_thread_idx++;
+	tl->finished = false;
+	r = pthread_create(&tl->tid, NULL, func, arg);
+	if (r != 0) {
+		swift_printf("pthread_create() failed: %s",
+		    strerror(errno));
+		free(tl);
+		pthread_mutex_unlock(&iked_threads_lock);
+		return -1;
+	}
+	LIST_INSERT_HEAD(&iked_threads, tl, next);
+
+	swift_printf("Detach thread(0x%p): idx %d",
+	    (void *)tl->tid, tl->idx);
+	r = tl->idx;
+	pthread_mutex_unlock(&iked_threads_lock);
+	
+	return r;
+}
+
+void
+join_all_threads(void)
+{
+	struct iked_thread_list *tl;
+	pthread_t tid;
+	bool found;
+	int idx, r;
+
+	for (;;) {
+		found = false;
+		pthread_mutex_lock(&iked_threads_lock);
+		LIST_FOREACH(tl, &iked_threads, next) {
+			if (tl->finished || tl->tid == pthread_self())
+				continue;
+			tl->finished = true;
+			found = true;
+			tid = tl->tid;
+			idx = tl->idx;
+			break;
+		}
+		pthread_mutex_unlock(&iked_threads_lock);
+		if (!found)
+			break;
+
+		r = pthread_join(tid, NULL);
+		if (r != 0) {
+			swift_printf("pthread_join(0x%p) failed: %d(%s)",
+			(void*)tid, r, strerror(r));
+		}
+		else {
+			swift_printf("Join thread(0x%p): idx %d",
+			(void *)tid, idx);
+		}
+	}
+}
+
+void
+join_thread(int idx)
+{
+	struct iked_thread_list *tl;
+	pthread_t tid;
+	bool found = false;
+	int r;
+
+	pthread_mutex_lock(&iked_threads_lock);
+	LIST_FOREACH(tl, &iked_threads, next) {
+		if (tl->idx != idx || tl->finished || tl->tid == pthread_self())
+			continue;
+		tl->finished = true;
+		tid = tl->tid;
+		found = true;
+		break;
+	}
+	pthread_mutex_unlock(&iked_threads_lock);
+	if (!found) {
+		swift_printf("Cannot find specified thread(%d)", idx);
+		return;
+	}
+
+	r = pthread_join(tid, NULL);
+	if (r != 0) {
+		swift_printf("pthread_join(0x%p) failed: %d(%s)",
+		    (void *)tid, r, strerror(r));
+		return;
+	}
+	else {
+		swift_printf("Join thread(0x%p): idx %d",
+		    (void *)tid, idx);
+	}
+}
+
+void
+clear_thread(void)
+{
+	struct iked_thread_list *tl;
+
+	// must be called after all threads are joined.
+	pthread_mutex_lock(&iked_threads_lock);
+	while (!LIST_EMPTY(&iked_threads)) {
+		tl = LIST_FIRST(&iked_threads);
+		assert(tl->finished);
+		LIST_REMOVE(tl, next);
+		free(tl);
+	}
+	pthread_mutex_unlock(&iked_threads_lock);
+}
+
+int
+gettidx(void)
+{
+	struct iked_thread_list *tl = NULL;
+
+	pthread_mutex_lock(&iked_threads_lock);
+	LIST_FOREACH(tl, &iked_threads, next) {
+		if (tl->tid != pthread_self())
+			continue;
+		break;
+	}
+	pthread_mutex_unlock(&iked_threads_lock);
+
+	return tl ? tl->idx : -1;
+}
+
 /*
  * called from swift. don't forget ARC.
  */
@@ -275,6 +427,11 @@ initIKE(const OpenIKEDConfig *cf,
     putsHandler sw_puts, errorHandler sw_err)
 {
 	struct iked *env = NULL;
+
+	//
+	// initialize libevent.
+	//
+	evthread_use_pthreads();
 
 	//
 	//  br is swift object, so it will be released automatically.
@@ -296,7 +453,7 @@ initIKE(const OpenIKEDConfig *cf,
 		swift_cf->port = IKED_NATT_PORT;
 	}
 	swift_cf->configurationFile =
-		strdup_d(cf->configurationFile, IKED_TEST_CONFIG);
+		strdup_d(cf->configurationFile, IKED_CONFIG);
 	swift_cf->controlSocket =
 		strdup_d(cf->controlSocket, IKED_SOCKET);	
 	swift_cf->ikedPrivKey =
@@ -437,7 +594,10 @@ ike_main(void *arg)
 	struct privsep		*ps;
 	enum privsep_procid	 proc_id = PROC_PARENT;
 
-	swift_printf("Starting IKEv2 thread %s (pid: %d)\n", IKED_VERSION, getpid());
+	swift_printf("Starting IKEv2 thread %s (pid: %d, tidx: %d)\n",
+	    IKED_VERSION, getpid(), gettidx());
+
+	initTLS();
 	
 	if (swift_cf == NULL) {
 		swift_printf("Error: swift_bridge is NULL\n");
@@ -532,16 +692,27 @@ ike_main(void *arg)
 	event_base_dispatch(iked_ev_base);
 
 	swift_printf("[parent] exiting...\n");
-	log_debug("[parent] %d parent exiting", getpid());
-	parent_shutdown(iked_env);
+	log_debug("[parent] pid %d, tidx %d, parent exiting", getpid(), gettidx());
 	event_free(ps->ps_evsigint); ps->ps_evsigint = NULL;
 	event_free(ps->ps_evsigterm); ps->ps_evsigterm = NULL;
 	event_free(ps->ps_evsigchld); ps->ps_evsigchld = NULL;
 	event_free(ps->ps_evsighup); ps->ps_evsighup = NULL;
 	event_free(ps->ps_evsigpipe); ps->ps_evsigpipe = NULL;
 	event_free(ps->ps_evsigusr1); ps->ps_evsigusr1 = NULL;
+
+//	parent_shutdown(iked_env);
 	event_base_free(iked_ev_base);
 	iked_ev_base = NULL;
+
+	retainEnv();
+	assert(envLock.env == iked_env);
+	free(iked_env);
+	envLock.env = iked_env = NULL;	
+	releaseEnv();
+
+	swift_printf("[parent] waiting child threads.");
+	join_all_threads();
+	swift_printf("[parent] Finished");
 
 	return NULL;
 }
@@ -550,16 +721,40 @@ bool
 startIKE(void)
 {
 	pthread_t thread;
+	sigset_t sigmask, sigmask_old;;
 	int ret;
 
 	swift_printf("Starting IKE in a new thread...\n");
-	ret = pthread_create(&thread, NULL, ike_main, NULL);
-	if (ret != 0) {
-		swift_error(1, "pthread_create failed.");
+
+	// apply default mask (ALL BLOCK)
+	sigemptyset(&sigmask);
+	sigaddset(&sigmask, SIGINT);
+	sigaddset(&sigmask, SIGTERM);
+	sigaddset(&sigmask, SIGCHLD);
+	sigaddset(&sigmask, SIGHUP);
+	sigaddset(&sigmask, SIGPIPE);
+	sigaddset(&sigmask, SIGUSR1);
+	if (pthread_sigmask(SIG_BLOCK, &sigmask, &sigmask_old) != 0) {
+		swift_error(1, "pthread_sigmask failed.");
 		return false;
 	}
-	swift_printf("IKE started in thread %lu.\n", thread);
-	return true;
+
+	// detach main thread(parent)
+	iked_parent_idx = detach_thread(ike_main, NULL);
+
+	return iked_parent_idx < 0 ? false : true;
+}
+
+void
+stopIKE(void)
+{
+	if (iked_parent_idx < 0)
+		return;
+
+	join_thread(iked_parent_idx);
+	iked_parent_idx = -1;
+
+	//assert(LIST_EMPTY(&iked_threads));
 }
 
 void
@@ -712,54 +907,15 @@ parent_sig_handler(int sig, short event, void *arg)
 		break;
 	case SIGTERM:
 	case SIGINT:
-		die = 1;
-		/* FALLTHROUGH */
-	case SIGCHLD:
-		do {
-			int len = 0;
-
-			pid = waitpid(-1, &status, WNOHANG);
-			if (pid <= 0)
-				continue;
-
-			fail = 0;
-			if (WIFSIGNALED(status)) {
-				fail = 1;
-				len = asprintf(&cause, "terminated; signal %d",
-				    WTERMSIG(status));
-			} else if (WIFEXITED(status)) {
-				if (WEXITSTATUS(status) != 0) {
-					fail = 1;
-					len = asprintf(&cause,
-					    "exited abnormally");
-				} else {
-					len = asprintf(&cause, "exited okay");
-					break;
-				}
-			} else
-				fatalx("unexpected cause of SIGCHLD");
-
-			if (len == -1)
-				fatal("asprintf");
-
-			die = 1;
-
-			for (id = 0; id < PROC_MAX; id++)
-				if (pid == ps->ps_pid[id]) {
-					if (fail)
-						log_warnx("lost child: %s %s",
-						    ps->ps_title[id], cause);
-					break;
-				}
-
-			free(cause);
-		} while (pid > 0 || (pid == -1 && errno == EINTR));
-
-		if (die) {
+		if (!tear_down) {
+			tear_down = true;
 			retainEnv();
 			parent_shutdown(ps->ps_env);
 			releaseEnv();
 		}
+		break;
+	case SIGCHLD:
+		fatalx("unexpected cause of SIGCHLD");
 		break;
 	default:
 		fatalx("unexpected signal");
@@ -861,14 +1017,14 @@ parent_dispatch_ikev2(int fd, struct privsep_proc *p, struct imsg *imsg)
 void
 parent_shutdown(struct iked *env)
 {
+	tear_down = true;
 	proc_kill(&env->sc_ps);
 
 #if defined(HAVE_VROUTE)
 	vroute_cleanup(env);
-#endif
 	free(env->sc_vroute);
-	free(env);
+	env->sc_vroute = NULL;
+#endif
 
 	log_warnx("parent terminating");
-	exit(0);
 }
