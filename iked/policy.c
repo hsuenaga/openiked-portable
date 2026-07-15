@@ -989,7 +989,7 @@ user_cmp(struct iked_user *a, struct iked_user *b)
  * the ESP SA proposal never includes an explicit DH group.
  *
  * Return 0 if a matching subset was found and -1 if no subset was found
- * or an error occured.
+ * or an error occurred.
  */
 int
 proposals_negotiate(struct iked_proposals *result, struct iked_proposals *local,
